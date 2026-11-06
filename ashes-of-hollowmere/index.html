@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Ashes of Hollowmere — a text adventure with combat and magic. Explore a cursed castle, fight the undead, and defeat the Hollow King.">
+  <title>Ashes of Hollowmere — A Text Adventure</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============ START SCREEN ============ -->
+  <section id="start" class="screen" hidden>
+    <pre id="start-art" class="title-art" aria-hidden="true"></pre>
+    <h1 class="game-title">Ashes of Hollowmere</h1>
+    <p class="tagline">A text adventure of steel, sorcery, and a king who refuses to stay dead.</p>
+    <form id="start-form" autocomplete="off">
+      <label for="hero-name">Your name</label>
+      <input id="hero-name" maxlength="20" placeholder="Wanderer" spellcheck="false">
+      <p class="label">Choose your class</p>
+      <div id="class-cards"></div>
+      <div class="start-buttons">
+        <button id="begin-btn" type="submit" class="primary" disabled>Begin your adventure</button>
+        <button id="continue-btn" type="button" hidden>Continue saved game</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <span class="brand">Ashes of Hollowmere</span>
+      <span id="location"></span>
+    </header>
+
+    <main class="layout">
+      <section class="main-col">
+        <div class="scene-box">
+          <pre id="scene" aria-hidden="true"></pre>
+          <div id="enemy-panel" hidden>
+            <div id="enemy-name"></div>
+            <div class="bar enemy"><div id="enemy-fill" class="fill"></div><span id="enemy-text" class="bar-text"></span></div>
+          </div>
+        </div>
+        <div id="output" role="log" aria-live="polite"></div>
+        <form id="cmd-form" autocomplete="off">
+          <span class="prompt" aria-hidden="true">&gt;</span>
+          <input id="cmd" maxlength="120" spellcheck="false" autocomplete="off" aria-label="Type a command" placeholder="What do you do?">
+          <button type="submit">Enter</button>
+        </form>
+        <div id="actions" aria-label="Quick actions"></div>
+      </section>
+
+      <aside class="side-col">
+        <div class="panel">
+          <div class="char-head"><span id="char-name"></span><span id="char-class"></span></div>
+          <div class="bar-label">Health <span id="poison-tag" class="poison" hidden>poisoned</span></div>
+          <div class="bar hp"><div id="hp-fill" class="fill"></div><span id="hp-text" class="bar-text"></span></div>
+          <div class="bar-label">Mana</div>
+          <div class="bar mp"><div id="mp-fill" class="fill"></div><span id="mp-text" class="bar-text"></span></div>
+          <div class="bar-label">Experience</div>
+          <div class="bar xp"><div id="xp-fill" class="fill"></div><span id="xp-text" class="bar-text"></span></div>
+          <div class="stats">
+            <div><span>Gold</span><b id="stat-gold"></b></div>
+            <div><span>Attack</span><b id="stat-atk"></b></div>
+            <div><span>Defense</span><b id="stat-def"></b></div>
+          </div>
+          <div class="equip"><span>Weapon:</span> <span id="eq-weapon"></span></div>
+          <div class="equip"><span>Armor:</span> <span id="eq-armor"></span></div>
+        </div>
+
+        <div class="panel">
+          <h2>Map <small id="map-label"></small></h2>
+          <canvas id="map" aria-label="Map of explored areas"></canvas>
+          <div id="compass">
+            <button type="button" data-dir="u" title="Up">▲ Up</button>
+            <button type="button" data-dir="n" title="North">N</button>
+            <span></span>
+            <button type="button" data-dir="w" title="West">W</button>
+            <button type="button" data-cmd="look" title="Look around">Look</button>
+            <button type="button" data-dir="e" title="East">E</button>
+            <button type="button" data-dir="d" title="Down">▼ Down</button>
+            <button type="button" data-dir="s" title="South">S</button>
+            <span></span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Inventory</h2>
+          <ul id="inv-list" class="list"></ul>
+        </div>
+
+        <div class="panel">
+          <h2>Spells</h2>
+          <ul id="spell-list" class="list"></ul>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- ============ MODAL ============ -->
+  <div id="modal" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-box">
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+      <div id="modal-buttons"></div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="rooms.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

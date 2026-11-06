@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Realmspire — Chess of Three Realms</title>
+<style>
+  :root{
+    --sq: clamp(26px, calc((100vw - 470px) / 25), 58px);
+    --bg1:#17121f; --bg2:#0d0a12; --ink:#ece6f5; --muted:#a99cbc; --gold:#e9c46a; --card:rgba(255,255,255,.05); --line:rgba(255,255,255,.12);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:radial-gradient(ellipse at top,#2a2040 0%,var(--bg1) 45%,var(--bg2) 100%) fixed;}
+  header{text-align:center;padding:14px 10px 4px}
+  h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:2rem;letter-spacing:.08em;color:var(--gold);text-shadow:0 2px 12px rgba(233,196,106,.35)}
+  .sub{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  main{display:flex;gap:18px;justify-content:center;align-items:flex-start;flex-wrap:wrap;padding:12px}
+  #boards{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  .board-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 10px 12px}
+  .board-title{display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 8px}
+  .realm-name{font-family:Georgia,serif;font-size:1.15rem;font-weight:bold;letter-spacing:.05em}
+  .realm-sub{font-size:.75rem;color:var(--muted)}
+  .sky .realm-name{color:#9fd3ff} .realm .realm-name{color:#c9e29a} .depths .realm-name{color:#d1a6ff}
+  .board{display:grid;grid-template-columns:repeat(8,var(--sq));grid-template-rows:repeat(8,var(--sq));border-radius:6px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}
+  .sky .sq.l{background:#e3eefa} .sky .sq.d{background:#94b6dc}
+  .realm .sq.l{background:#ebdfb9} .realm .sq.d{background:#8aa463}
+  .depths .sq.l{background:#9c8aa8} .depths .sq.d{background:#4f3e5f}
+  .sq.last{box-shadow:inset 0 0 0 100px rgba(255,214,64,.30)}
+  .sq.sel{box-shadow:inset 0 0 0 3px #ffe066, inset 0 0 0 100px rgba(255,224,102,.35)}
+  .sq.check{background:radial-gradient(circle,#ff5a5a 0%,rgba(255,60,60,.6) 45%,transparent 75%) !important}
+  .sq.colhl::after{content:"";position:absolute;inset:2px;border:2px dashed rgba(255,255,255,.85);border-radius:4px;pointer-events:none}
+  .sq.move::before{content:"";position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(20,20,40,.45);pointer-events:none}
+  .sq.cap::before{content:"";position:absolute;inset:6%;border-radius:50%;border:4px solid rgba(220,40,40,.8);pointer-events:none;z-index:2}
+  .sq.strike::before{content:"⚡";position:absolute;inset:4%;border-radius:50%;border:4px solid #b46cff;box-shadow:0 0 12px #b46cff;color:#fff36b;font-size:calc(var(--sq)*.32);display:flex;align-items:flex-start;justify-content:flex-end;pointer-events:none;z-index:2}
+  .sq:hover{filter:brightness(1.08)}
+  .piece{width:80%;height:80%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:calc(var(--sq)*.5);line-height:1;
+    font-family:"Segoe UI Symbol","Noto Sans Symbols 2","DejaVu Sans","Segoe UI",sans-serif;pointer-events:none;box-shadow:0 2px 4px rgba(0,0,0,.45);z-index:1}
+  .dawn{background:radial-gradient(circle at 35% 30%,#fffbe8,#efd690 60%,#b8923a);color:#5a3a04;border:2px solid #7a5a14}
+  .dusk{background:radial-gradient(circle at 35% 30%,#7a5a9e,#33224a 60%,#170e24);color:#f3e8ff;border:2px solid #c8a8f0}
+  .ice{position:absolute;top:0;right:2px;font-size:calc(var(--sq)*.3);color:#bff4ff;text-shadow:0 0 4px #00b7ff,0 0 2px #000;z-index:3;pointer-events:none}
+  .coord{position:absolute;font-size:calc(var(--sq)*.2);font-weight:600;opacity:.65;color:#222;pointer-events:none;z-index:3}
+  .depths .coord{color:#eee}
+  .coord.rk{top:1px;left:3px} .coord.fl{bottom:0;right:3px}
+  aside{width:300px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .card h3{margin:0 0 8px;font-size:.85rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  #status{font-size:1.05rem;font-weight:600;display:flex;align-items:center;gap:10px;min-height:52px}
+  #status.over{border-color:var(--gold);box-shadow:0 0 18px rgba(233,196,106,.35)}
+  .dot{width:18px;height:18px;border-radius:50%;flex:none}
+  .spin{width:16px;height:16px;border:3px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:sp 0.8s linear infinite;flex:none}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.9rem;margin-bottom:8px}
+  select,button{font:inherit;font-size:.88rem;color:var(--ink);background:#2a2138;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  button{cursor:pointer} button:hover:not(:disabled){background:#3a2e4e} button:disabled{opacity:.45;cursor:default}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+  #newBtn{background:#6b4f12;border-color:#a8822a} #newBtn:hover{background:#80601a}
+  .hint{font-size:.75rem;color:var(--muted);margin:6px 0 0}
+  #info{font-size:.86rem;line-height:1.4;min-height:96px}
+  #info .head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .mini{width:30px;height:30px;font-size:17px;flex:none}
+  .tiny{width:22px;height:22px;font-size:12px;display:inline-flex;margin:1px}
+  .caprow{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-height:26px;font-size:.82rem;color:var(--muted);margin-bottom:4px}
+  #log{margin:0;padding:0 0 0 4px;list-style:none;max-height:220px;overflow-y:auto;font-size:.82rem;line-height:1.55}
+  #log li{display:flex;gap:6px;align-items:baseline}
+  #log .n{color:var(--muted);min-width:26px;text-align:right}
+  #log .s{width:9px;height:9px;border-radius:50%;flex:none;transform:translateY(-1px)}
+  .frz{color:#8fe3ff}
+  .modal{position:fixed;inset:0;background:rgba(5,3,10,.75);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal.hidden{display:none}
+  .modal-box{background:#1e1729;border:1px solid var(--line);border-radius:16px;max-width:860px;width:100%;max-height:90vh;overflow-y:auto;padding:20px 24px;line-height:1.5;font-size:.92rem}
+  .modal-box h2{margin-top:0;font-family:Georgia,serif;color:var(--gold)}
+  .modal-box h4{margin:16px 0 6px;color:#d9c8f5}
+  table{border-collapse:collapse;width:100%;font-size:.86rem}
+  td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:600}
+  .close{float:right}
+</style>
+</head>
+<body>
+<header>
+  <h1>REALMSPIRE</h1>
+  <p class="sub">Chess across three stacked realms: the Skies, the Realm, and the Depths</p>
+</header>
+<main>
+  <section id="boards"></section>
+  <aside>
+    <div class="card" id="status"></div>
+    <div class="card">
+      <h3>Game</h3>
+      <label>Mode
+        <select id="mode"><option value="bot">One player vs bot</option><option value="2p">Two players</option></select>
+      </label>
+      <label id="lvlRow">Bot difficulty
+        <select id="level"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select>
+      </label>
+      <label id="sideRow">You play
+        <select id="human"><option value="0">Dawn (moves first)</option><option value="1">Dusk</option></select>
+      </label>
+      <div class="btns">
+        <button id="newBtn">New game</button>
+        <button id="undoBtn">Undo</button>
+        <button id="flipBtn">Flip boards</button>
+        <button id="rulesBtn">Rules</button>
+      </div>
+      <p class="hint">Mode and side take effect when you start a new game. Difficulty changes apply right away.</p>
+    </div>
+    <div class="card" id="info"></div>
+    <div class="card">
+      <h3>Captured</h3>
+      <div class="caprow" id="cap0"></div>
+      <div class="caprow" id="cap1"></div>
+    </div>
+    <div class="card">
+      <h3>Moves</h3>
+      <ol id="log"></ol>
+    </div>
+  </aside>
+</main>
+
+<div id="rules" class="modal hidden">
+  <div class="modal-box">
+    <button class="close" id="closeRules">Close ✕</button>
+    <h2>How to play Realmspire</h2>
+    <p><b>Goal:</b> checkmate the enemy <b>Sovereign</b>. <b>Dawn</b> (gold) moves first, then <b>Dusk</b> (violet).</p>
+    <p><b>Three realms.</b> The <b>Skies</b> sit above the <b>Realm</b>, which sits above the <b>Depths</b>. Each square has a matching square directly above or below it on the next board (same file and rank). Hover over any square to see that column outlined on all three boards.</p>
+    <p><b>Moving.</b> Click one of your pieces to see its moves. A dot marks a move, a red ring marks a capture, and a violet ring with ⚡ marks a lightning strike. Most pieces stay in their home realm, but a few can travel between realms.</p>
+    <h4>Special rules</h4>
+    <ul>
+      <li><b>Lightning strike:</b> a Stormcaller can capture an enemy piece directly below it in the Realm without moving.</li>
+      <li><b>Freeze:</b> an enemy piece standing in the Realm directly above a Warden is frozen (❄). It can't move, capture, or give check while the Warden stays there.</li>
+      <li><b>Promotion:</b> a Footman that reaches the far rank becomes an Archmage, a Wisp becomes a Roc, and a Delver becomes a Burrower.</li>
+      <li>There is no castling, double-step, or en passant.</li>
+      <li><b>Draws:</b> stalemate, the same position three times, 50 moves by each side without a capture or promotion, or only the two Sovereigns left.</li>
+    </ul>
+    <h4>Pieces</h4>
+    <table id="pieceTable"><tr><th></th><th>Piece</th><th>Starts in</th><th>Movement</th></tr></table>
+  </div>
+</div>
+
+<script>
+/* ===================== ENGINE (also runs inside the bot's Web Worker) ===================== */
+function EngineFactory(){
+  var K=1,Q=2,R=3,B=4,N=5,P=6,ST=7,RO=8,WI=9,WA=10,BU=11,DE=12;
+  var VAL=[0,0,900,500,330,300,100,650,400,110,320,300,110];
+  var STRIKE=1,PROMO=2;
+  var ORTH=[[1,0],[-1,0],[0,1],[0,-1]], DIAG=[[1,1],[1,-1],[-1,1],[-1,-1]], ALL8=ORTH.concat(DIAG),
+      KN=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+  var CENTER=[];
+  for(var r0=0;r0<8;r0++)for(var f0=0;f0<8;f0++)CENTER.push(Math.round((3.5-Math.max(Math.abs(3.5-r0),Math.abs(3.5-f0)))*6));
+
+  // Board: array of 192 = level*64 + rank*8 + file. Level 0 Depths, 1 Realm, 2 Skies.
+  // Piece code = type | (color<<4); color 0 Dawn, 1 Dusk. Move = from | to<<8 | flags<<16.
+  var B_,S_,O_,C_,F_;
+  function add(L,r,f,mode,flags){ // mode 0 move/capture, 1 move only, 2 capture only. Returns true if empty.
+    if(L<0||L>2||r<0||r>7||f<0||f>7) return false;
+    var to=(L<<6)|(r<<3)|f, t=B_[to];
+    if(t===0){ if(mode!==2&&!C_) O_.push(F_|(to<<8)|(flags<<16)); return true; }
+    if((t>>4)!==S_&&mode!==1) O_.push(F_|(to<<8)|(flags<<16));
+    return false;
+  }
+  function slide(L,r,f,dirs){ for(var i=0;i<dirs.length;i++){var dr=dirs[i][0],df=dirs[i][1],rr=r+dr,ff=f+df; while(add(L,rr,ff,0,0)){rr+=dr;ff+=df;}} }
+  function steps(L,r,f,dirs,mode){ for(var i=0;i<dirs.length;i++) add(L,r+dirs[i][0],f+dirs[i][1],mode,0); }
+  function frozen(b,sq){ if((sq>>6)!==1||!b[sq]) return false; var w=b[sq-64]; return w!==0&&(w&15)===WA&&(w>>4)!==(b[sq]>>4); }
+  function genPiece(sq,p){
+    var t=p&15,L=sq>>6,r=(sq>>3)&7,f=sq&7,side=S_,fwd=side?-1:1,last=side?0:7,pf;
+    F_=sq;
+    if(L===1){var w=B_[sq-64]; if(w&&(w&15)===WA&&(w>>4)!==side) return;}
+    switch(t){
+      case K: steps(L,r,f,ALL8,0); add(L+1,r,f,0,0); add(L-1,r,f,0,0); break;
+      case Q: slide(L,r,f,ALL8); add(L+1,r,f,0,0); add(L-1,r,f,0,0); break;
+      case R: slide(L,r,f,ORTH); break;
+      case B: slide(L,r,f,DIAG); break;
+      case N: steps(L,r,f,KN,0); break;
+      case P: case DE:
+        pf=(r+fwd===last)?PROMO:0; add(L,r+fwd,f,1,pf); add(L,r+fwd,f-1,2,pf); add(L,r+fwd,f+1,2,pf); break;
+      case WI:
+        pf=(r+fwd===last)?PROMO:0; add(L,r+fwd,f,1,pf); add(L,r,f-1,1,0); add(L,r,f+1,1,0); add(L,r+fwd,f-1,2,pf); add(L,r+fwd,f+1,2,pf); break;
+      case ST:
+        steps(L,r,f,ALL8,0);
+        if(L>0){var t2=B_[sq-64]; if(t2&&(t2>>4)!==side) O_.push(sq|((sq-64)<<8)|(STRIKE<<16));}
+        break;
+      case RO:
+        steps(L,r,f,KN,0);
+        if(L-1>=1) steps(L-1,r,f,DIAG,0);
+        if(L+1<=2) steps(L+1,r,f,DIAG,0);
+        break;
+      case WA: steps(L,r,f,ORTH,0); break;
+      case BU: steps(L,r,f,ALL8,0); if(L===0) add(1,r,f,0,0); else if(L===1) add(0,r,f,0,0); break;
+    }
+  }
+  function gen(b,side,capsOnly){
+    B_=b;S_=side;C_=capsOnly;var out=[];O_=out;
+    for(var sq=0;sq<192;sq++){var p=b[sq]; if(p!==0&&(p>>4)===side) genPiece(sq,p);}
+    return out;
+  }
+  function promoteType(t){ return t===P?Q:t===WI?RO:BU; }
+  function make(b,m){
+    var from=m&255,to=(m>>8)&255,fl=m>>16,cap=b[to];
+    if(fl&STRIKE){b[to]=0;return cap;}
+    var p=b[from]; b[from]=0;
+    b[to]=(fl&PROMO)?(promoteType(p&15)|(p&16)):p;
+    return cap;
+  }
+  function unmake(b,m,cap,moved){
+    var from=m&255,to=(m>>8)&255;
+    if((m>>16)&STRIKE){b[to]=cap;return;}
+    b[from]=moved; b[to]=cap;
+  }
+  function kingSq(b,side){var k=K|(side<<4); for(var i=0;i<192;i++) if(b[i]===k) return i; return -1;}
+  function attacked(b,sq,bySide){var ms=gen(b,bySide,true); for(var i=0;i<ms.length;i++) if(((ms[i]>>8)&255)===sq) return true; return false;}
+  function inCheck(b,side){var k=kingSq(b,side); return k<0||attacked(b,k,side^1);}
+  function legalMoves(b,side){
+    var ms=gen(b,side,false),res=[];
+    for(var i=0;i<ms.length;i++){var m=ms[i],moved=b[m&255],cap=make(b,m); if(!inCheck(b,side)) res.push(m); unmake(b,m,cap,moved);}
+    return res;
+  }
+  function evaluate(b){ // from Dawn's point of view
+    var s=0;
+    for(var sq=0;sq<192;sq++){
+      var p=b[sq]; if(!p) continue;
+      var t=p&15,c=p>>4,r=(sq>>3)&7,f=sq&7,L=sq>>6,v=VAL[t];
+      if(t===P||t===WI||t===DE){var adv=c?7-r:r; v+=adv*adv*2;}
+      else if(t!==K) v+=CENTER[(r<<3)|f];
+      if(L===1&&t!==K){var w=b[sq-64]; if(w&&(w&15)===WA&&(w>>4)!==c) v-=VAL[t]*0.25;}
+      if(t===ST&&L>0){var tb=b[sq-64]; if(tb&&(tb>>4)!==c) v+=20;}
+      if(t===K&&L===1&&r===(c?7:0)) v+=15;
+      s+=c?-v:v;
+    }
+    return s;
+  }
+  // ---------- search ----------
+  var MATE=100000,KCAP=1000000,ABORT={abort:true},nodes=0,deadline=0,QMAX=6;
+  function mscore(b,m){var to=(m>>8)&255,cap=b[to],s=0; if(cap) s=((cap&15)===K)?1e7:1000+10*VAL[cap&15]-VAL[b[m&255]&15]/10; if((m>>16)&PROMO) s+=900; return s;}
+  function order(b,ms){var sc=new Array(ms.length),idx=new Array(ms.length),i; for(i=0;i<ms.length;i++){sc[i]=mscore(b,ms[i]);idx[i]=i;} idx.sort(function(a,c){return sc[c]-sc[a];}); var o=new Array(ms.length); for(i=0;i<ms.length;i++) o[i]=ms[idx[i]]; return o;}
+  function kingCapture(b,ms,side){var ek=K|((side^1)<<4); for(var i=0;i<ms.length;i++) if(b[(ms[i]>>8)&255]===ek) return true; return false;}
+  function qs(b,side,alpha,beta,qd){
+    if((++nodes&2047)===0&&Date.now()>deadline) throw ABORT;
+    var ms=gen(b,side,true);
+    if(kingCapture(b,ms,side)) return KCAP;
+    var stand=side?-evaluate(b):evaluate(b);
+    if(qd>=QMAX) return stand;
+    if(stand>=beta) return stand;
+    if(stand>alpha) alpha=stand;
+    ms=order(b,ms);
+    for(var i=0;i<ms.length;i++){
+      var m=ms[i],moved=b[m&255],cap=make(b,m),sc=-qs(b,side^1,-beta,-alpha,qd+1); unmake(b,m,cap,moved);
+      if(sc===-KCAP) continue;
+      if(sc>=beta) return sc;
+      if(sc>alpha) alpha=sc;
+    }
+    return alpha;
+  }
+  function negamax(b,side,depth,alpha,beta,ply){
+    if(depth<=0) return qs(b,side,alpha,beta,0);
+    if((++nodes&2047)===0&&Date.now()>deadline) throw ABORT;
+    var ms=gen(b,side,false);
+    if(kingCapture(b,ms,side)) return KCAP;
+    ms=order(b,ms);
+    var best=-Infinity,any=false;
+    for(var i=0;i<ms.length;i++){
+      var m=ms[i],moved=b[m&255],cap=make(b,m),sc=-negamax(b,side^1,depth-1,-beta,-alpha,ply+1); unmake(b,m,cap,moved);
+      if(sc===-KCAP) continue;
+      any=true;
+      if(sc>best) best=sc;
+      if(sc>alpha) alpha=sc;
+      if(alpha>=beta) break;
+    }
+    if(!any) return inCheck(b,side)?-(MATE-ply):0;
+    return best;
+  }
+  var LEVELS={1:{depth:1,q:0,noise:160,rand:0.2,time:800},2:{depth:2,q:4,noise:25,rand:0,time:2000},3:{depth:6,q:6,noise:0,rand:0,time:3500}};
+  function chooseMove(board,side,level){
+    var cfg=LEVELS[level]||LEVELS[2],b=board.slice();
+    var legal=legalMoves(b,side);
+    if(!legal.length) return null;
+    if(legal.length===1) return legal[0];
+    if(Math.random()<cfg.rand) return legal[Math.floor(Math.random()*legal.length)];
+    QMAX=cfg.q; nodes=0; deadline=Date.now()+cfg.time;
+    var ordered=order(b,legal),best=ordered[0];
+    for(var d=1;d<=cfg.depth;d++){
+      var bb=b.slice(),scores=[],alpha=-Infinity,iterBest=null,iterScore=-Infinity,done=true;
+      try{
+        for(var i=0;i<ordered.length;i++){
+          var m=ordered[i],moved=bb[m&255],cap=make(bb,m);
+          var sc=-negamax(bb,side^1,d-1,-Infinity,cfg.noise?Infinity:-alpha,1);
+          unmake(bb,m,cap,moved);
+          if(cfg.noise) sc+=(Math.random()*2-1)*cfg.noise;
+          scores.push([sc,m]);
+          if(sc>iterScore){iterScore=sc;iterBest=m;}
+          if(sc>alpha) alpha=sc;
+        }
+      }catch(e){ if(e!==ABORT) throw e; done=false; }
+      if(!done) break;
+      best=iterBest;
+      scores.sort(function(a,c){return c[0]-a[0];});
+      ordered=scores.map(function(x){return x[1];});
+      if(iterScore>MATE-1000) break;
+    }
+    return best;
+  }
+  function initial(){
+    var b=new Array(192).fill(0),back=[R,N,B,Q,K,B,N,R];
+    for(var c=0;c<2;c++){
+      var s=c<<4,br=c?7:0,fr=c?6:1,f;
+      for(f=0;f<8;f++){b[64+br*8+f]=back[f]|s; b[64+fr*8+f]=P|s;}
+      b[128+br*8+1]=RO|s; b[128+br*8+6]=RO|s; b[128+br*8+3]=ST|s;
+      [0,2,5,7].forEach(function(ff){b[128+fr*8+ff]=WI|s;});
+      b[br*8+1]=BU|s; b[br*8+6]=BU|s; b[br*8+2]=WA|s; b[br*8+5]=WA|s;
+      [0,3,4,7].forEach(function(ff){b[fr*8+ff]=DE|s;});
+    }
+    return b;
+  }
+  return {K:K,Q:Q,R:R,B:B,N:N,P:P,ST:ST,RO:RO,WI:WI,WA:WA,BU:BU,DE:DE,STRIKE:STRIKE,PROMO:PROMO,
+    initial:initial,gen:gen,legalMoves:legalMoves,make:make,unmake:unmake,inCheck:inCheck,frozen:frozen,
+    kingSq:kingSq,promoteType:promoteType,chooseMove:chooseMove,evaluate:evaluate};
+}
+
+/* ===================== USER INTERFACE ===================== */
+var E=EngineFactory();
+var NAME=['','Sovereign','Archmage','Sentinel','Seer','Lancer','Footman','Stormcaller','Roc','Wisp','Warden','Burrower','Delver'];
+var GLYPH=['','♚︎','✶','♜︎','♝︎','♞︎','♟︎','ϟ','Ψ','✧','❖','⚒︎','◆'];
+var HOME=['','Realm','Realm','Realm','Realm','Realm','Realm','Skies','Skies','Skies','Depths','Depths','Depths'];
+var DESC=['',
+ 'Moves one step in any direction within its realm, or straight up or down to the square directly above or below. If it is checkmated, you lose.',
+ 'Slides any distance in a straight or diagonal line within its realm, or steps straight up or down one realm.',
+ 'Slides any distance in a straight line (not diagonally) within its realm.',
+ 'Slides any distance diagonally within its realm.',
+ 'Leaps in an L shape (two squares one way, then one square sideways) within its realm, jumping over anything in between.',
+ 'Moves one square forward and captures one square diagonally forward. Becomes an Archmage on the far rank.',
+ 'Moves one step in any direction within the Skies. <b>Lightning strike:</b> it can capture an enemy directly below it in the Realm without moving.',
+ 'Leaps in an L shape within its realm, or swoops one realm up or down to a diagonally neighbouring square. Travels between the Skies and the Realm, never the Depths.',
+ 'Moves one square forward or sideways and captures one square diagonally forward. Becomes a Roc on the far rank.',
+ 'Moves one step in a straight line within the Depths. <b>Freeze:</b> any enemy directly above it in the Realm can\'t move, capture, or give check.',
+ 'Moves one step in any direction, or straight up or down between the Depths and the Realm.',
+ 'Moves one square forward and captures one square diagonally forward. Becomes a Burrower on the far rank.'];
+var SIDE=['Dawn','Dusk'], SIDECOL=['#efd690','#7a5a9e'], LV='DRS', FILES='abcdefgh';
+
+var G=null, sel=null, selTargets=new Map(), hoverSq=null, flipped=false, thinking=false, reqId=0, cfg={mode:'bot',human:0};
+var sqEl=new Array(192);
+var $=function(id){return document.getElementById(id);};
+
+function sqName(sq){return LV[sq>>6]+FILES[sq&7]+(((sq>>3)&7)+1);}
+function token(p,extra){return '<div class="piece '+((p>>4)?'dusk':'dawn')+' '+(extra||'')+'">'+GLYPH[p&15]+'</div>';}
+
+function buildBoards(){
+  var host=$('boards');
+  var meta={2:['Skies','upper realm','sky'],1:['Realm','middle realm','realm'],0:['Depths','lower realm','depths']};
+  [2,1,0].forEach(function(L){
+    var wrap=document.createElement('div'); wrap.className='board-wrap '+meta[L][2];
+    wrap.innerHTML='<div class="board-title"><span class="realm-name">'+meta[L][0]+'</span><span class="realm-sub">'+meta[L][1]+'</span></div>';
+    var bd=document.createElement('div'); bd.className='board';
+    for(var r=0;r<8;r++)for(var f=0;f<8;f++){
+      (function(sq){
+        var el=document.createElement('div');
+        el.addEventListener('click',function(){onSquare(sq);});
+        el.addEventListener('mouseenter',function(){hover(sq,true);});
+        el.addEventListener('mouseleave',function(){hover(sq,false);});
+        sqEl[sq]=el; bd.appendChild(el);
+      })(L*64+r*8+f);
+    }
+    wrap.appendChild(bd); host.appendChild(wrap);
+  });
+}
+
+function posKey(){return G.b.join(',')+'|'+G.side;}
+
+function newGame(){
+  reqId++; thinking=false; sel=null;
+  cfg={mode:$('mode').value,human:+$('human').value};
+  flipped=(cfg.mode==='bot'&&cfg.human===1);
+  G={b:E.initial(),side:0,half:0,hist:[],log:[],last:null,keys:[],captured:[[],[]],over:null,check:false};
+  G.keys.push(posKey());
+  G.legal=E.legalMoves(G.b,0);
+  render(); maybeBot();
+}
+
+function applyMove(m){
+  G.hist.push({b:G.b.slice(),side:G.side,half:G.half,last:G.last,logLen:G.log.length,keysLen:G.keys.length,
+    cap:[G.captured[0].slice(),G.captured[1].slice()],over:G.over,check:G.check});
+  var from=m&255,to=(m>>8)&255,fl=m>>16,moved=G.b[from],cap=G.b[to],mover=G.side;
+  E.make(G.b,m);
+  if(cap) G.captured[mover].push(cap);
+  G.half=(cap||(fl&E.PROMO))?0:G.half+1;
+  G.last={from:from,to:to};
+  G.side^=1;
+  var k=posKey(); G.keys.push(k);
+  var txt=NAME[moved&15]+' '+sqName(from)+((fl&E.STRIKE)?' ⚡ ':(cap?' × ':' → '))+sqName(to);
+  if(fl&E.PROMO) txt+=' = '+NAME[E.promoteType(moved&15)];
+  G.legal=E.legalMoves(G.b,G.side);
+  G.check=E.inCheck(G.b,G.side);
+  var reps=G.keys.filter(function(x){return x===k;}).length;
+  var onlyKings=G.b.every(function(p){return !p||(p&15)===E.K;});
+  if(!G.legal.length){
+    if(G.check){ G.over={winner:mover,text:'Checkmate! '+SIDE[mover]+' wins.'}; txt+=' #'; }
+    else G.over={winner:-1,text:'Stalemate: the game is a draw.'};
+  } else {
+    if(G.check) txt+=' +';
+    if(G.half>=100) G.over={winner:-1,text:'Draw: 50 moves each without a capture or promotion.'};
+    else if(reps>=3) G.over={winner:-1,text:'Draw: the same position came up three times.'};
+    else if(onlyKings) G.over={winner:-1,text:'Draw: only the Sovereigns remain.'};
+  }
+  if(G.over&&cfg.mode==='bot'&&G.over.winner>=0) G.over.text+=(G.over.winner===cfg.human?' You win!':' The bot wins this time.');
+  G.log.push({side:mover,txt:txt});
+}
+
+function popOne(){
+  var s=G.hist.pop(); if(!s) return;
+  G.b=s.b; G.side=s.side; G.half=s.half; G.last=s.last; G.log.length=s.logLen; G.keys.length=s.keysLen;
+  G.captured=s.cap; G.over=s.over; G.check=s.check; G.legal=E.legalMoves(G.b,G.side);
+}
+function undo(){
+  if(!G.hist.length) return;
+  reqId++; thinking=false; sel=null;
+  popOne();
+  if(cfg.mode==='bot') while(G.side!==cfg.human&&G.hist.length) popOne();
+  render(); maybeBot();
+}
+
+/* ---- bot ---- */
+var worker=null,pending={};
+try{
+  var src='var E=('+EngineFactory.toString()+')();onmessage=function(e){var d=e.data;postMessage({id:d.id,move:E.chooseMove(d.board,d.side,d.level)});};';
+  worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+  worker.onmessage=function(e){var f=pending[e.data.id]; delete pending[e.data.id]; if(f) f(e.data.move);};
+  worker.onerror=function(){ worker=null; Object.keys(pending).forEach(function(id){var p=pending[id]; delete pending[id]; p.fallback();}); };
+}catch(err){ worker=null; }
+
+function maybeBot(){
+  if(G.over||cfg.mode!=='bot'||G.side===cfg.human) return;
+  thinking=true; render();
+  var id=++reqId,t0=Date.now(),level=+$('level').value,board=G.b.slice(),side=G.side;
+  function done(m){
+    if(id!==reqId) return;
+    setTimeout(function(){
+      if(id!==reqId) return;
+      thinking=false;
+      if(m!==null&&m!==undefined) applyMove(m);
+      render(); maybeBot();
+    },Math.max(0,450-(Date.now()-t0)));
+  }
+  done.fallback=function(){ setTimeout(function(){done(E.chooseMove(board,side,level));},20); };
+  if(worker){ pending[id]=done; worker.postMessage({id:id,board:board,side:side,level:level}); }
+  else done.fallback();
+}
+
+/* ---- interaction ---- */
+function canAct(){ return !G.over&&!thinking&&!(cfg.mode==='bot'&&G.side!==cfg.human); }
+function onSquare(sq){
+  if(!canAct()) return;
+  if(sel!==null&&selTargets.has(sq)){ var m=selTargets.get(sq); sel=null; applyMove(m); render(); maybeBot(); return; }
+  var p=G.b[sq];
+  sel=(p&&(p>>4)===G.side&&sel!==sq)?sq:null;
+  render();
+}
+function hover(sq,on){
+  var c=sq&63;
+  for(var L=0;L<3;L++){var s=L*64+c; if(s!==sq) sqEl[s].classList.toggle('colhl',on);}
+  hoverSq=on?sq:null; showInfo();
+}
+
+/* ---- rendering ---- */
+function render(){
+  selTargets=new Map();
+  if(sel!==null) G.legal.forEach(function(m){ if((m&255)===sel) selTargets.set((m>>8)&255,m); });
+  var kSq=G.check?E.kingSq(G.b,G.side):-1;
+  for(var sq=0;sq<192;sq++){
+    var el=sqEl[sq],r=(sq>>3)&7,f=sq&7,p=G.b[sq];
+    el.style.gridRow=flipped?(r+1):(8-r);
+    el.style.gridColumn=flipped?(8-f):(f+1);
+    var cls='sq '+(((r+f)&1)?'l':'d');
+    if(G.last&&(G.last.from===sq||G.last.to===sq)) cls+=' last';
+    if(sq===sel) cls+=' sel';
+    if(selTargets.has(sq)) cls+=((selTargets.get(sq)>>16)&E.STRIKE)?' strike':(p?' cap':' move');
+    if(sq===kSq) cls+=' check';
+    if(hoverSq!==null&&(hoverSq&63)===(sq&63)&&sq!==hoverSq) cls+=' colhl';
+    el.className=cls;
+    var html='';
+    if(p){ html+=token(p); if(E.frozen(G.b,sq)) html+='<span class="ice" title="Frozen by a Warden">❄</span>'; }
+    var dispRow=flipped?r:7-r, dispCol=flipped?7-f:f;
+    if(dispCol===0) html+='<span class="coord rk">'+(r+1)+'</span>';
+    if(dispRow===7) html+='<span class="coord fl">'+FILES[f]+'</span>';
+    el.innerHTML=html;
+  }
+  renderPanel(); showInfo();
+}
+
+function renderPanel(){
+  var st=$('status');
+  if(G.over){ st.className='card over'; st.innerHTML='<span>'+G.over.text+'</span>'; }
+  else{
+    st.className='card';
+    var who=SIDE[G.side], txt;
+    if(thinking) txt='<div class="spin"></div><span>'+who+' (bot) is thinking…</span>';
+    else{
+      txt='<div class="dot" style="background:'+SIDECOL[G.side]+';border:2px solid '+(G.side?'#c8a8f0':'#7a5a14')+'"></div><span>'+who+' to move';
+      if(cfg.mode==='bot') txt+=G.side===cfg.human?' (you)':' (bot)';
+      txt+='</span>';
+    }
+    if(G.check) txt+='<span style="color:#ff7070">Check!</span>';
+    st.innerHTML=txt;
+  }
+  $('undoBtn').disabled=!G.hist.length;
+  $('lvlRow').style.display=$('sideRow').style.display=($('mode').value==='bot')?'flex':'none';
+  for(var s=0;s<2;s++){
+    var caps=G.captured[s].slice().sort(function(a,b){return (a&15)-(b&15);});
+    $('cap'+s).innerHTML='<span style="min-width:48px">'+SIDE[s]+':</span>'+(caps.length?caps.map(function(p){return token(p,'tiny');}).join(''):'—');
+  }
+  var log=$('log');
+  log.innerHTML=G.log.map(function(e,i){
+    return '<li><span class="n">'+(i%2===0?(i/2+1)+'.':'')+'</span><span class="s" style="background:'+SIDECOL[e.side]+'"></span><span>'+e.txt+'</span></li>';
+  }).join('');
+  log.scrollTop=log.scrollHeight;
+}
+
+function showInfo(){
+  var sq=(hoverSq!==null&&G.b[hoverSq])?hoverSq:sel, box=$('info');
+  if(sq===null||!G.b[sq]){
+    box.innerHTML='<h3>Piece info</h3><span style="color:var(--muted)">Hover over a piece to see how it moves. Click one of your pieces to see its moves.</span>';
+    return;
+  }
+  var p=G.b[sq];
+  var extra=E.frozen(G.b,sq)?'<div class="frz">❄ Frozen by the Warden below: it can\'t move or capture.</div>':'';
+  box.innerHTML='<div class="head">'+token(p,'mini')+'<div><b>'+SIDE[p>>4]+' '+NAME[p&15]+'</b><br><span style="color:var(--muted);font-size:.8rem">on '+sqName(sq)+' · starts in the '+HOME[p&15]+'</span></div></div>'+DESC[p&15]+extra;
+}
+
+function buildRules(){
+  var t=$('pieceTable');
+  for(var i=1;i<=12;i++){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+token(i,'mini')+'</td><td><b>'+NAME[i]+'</b></td><td>'+HOME[i]+'</td><td>'+DESC[i]+'</td>';
+    t.appendChild(tr);
+  }
+}
+
+/* ---- wiring ---- */
+buildBoards(); buildRules();
+$('newBtn').onclick=newGame;
+$('undoBtn').onclick=undo;
+$('flipBtn').onclick=function(){flipped=!flipped;render();};
+$('rulesBtn').onclick=function(){$('rules').classList.remove('hidden');};
+$('closeRules').onclick=function(){$('rules').classList.add('hidden');};
+$('rules').onclick=function(e){if(e.target.id==='rules')$('rules').classList.add('hidden');};
+$('mode').onchange=function(){renderPanel();};
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ $('rules').classList.add('hidden'); sel=null; render(); } });
+newGame();
+try{ if(!localStorage.getItem('realmspire-seen')){ $('rules').classList.remove('hidden'); localStorage.setItem('realmspire-seen','1'); } }catch(e){}
+</script>
+</body>
+</html>
