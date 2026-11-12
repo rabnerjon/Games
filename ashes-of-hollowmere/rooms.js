@@ -6,9 +6,44 @@
      onEnter(g, firstVisit)
    "g" is the small game API defined in game.js. */
 'use strict';
+// ============================================================================
+// WHAT THIS FILE IS (a beginner's guide)
+// ============================================================================
+// This JavaScript file builds the game WORLD: every place you can visit
+// (called a "room", even outdoors), who is there, what is lying around, which
+// way you can go, and any puzzles. It adds all of this to window.GameData,
+// the catalogue that data.js created, so game.js can use it.
+//
+// Comments (lines starting with //, or text between /* and */) are notes for
+// people. The computer skips them.
+//
+// Terms used below:
+//   - FUNCTION: a named set of instructions you can run ("call") whenever
+//     needed. Inputs go in the parentheses ( ), called PARAMETERS.
+//   - "return" sends a result back from a function. Here, many functions
+//     return true to mean "I handled that command" or false for "not me".
+//   - "if (...) { ... } else { ... }" runs one block of code or the other
+//     depending on whether the condition in the parentheses is true.
+//   - "g" is a small toolbox ("API", Application Programming Interface) that
+//     game.js passes in. It lets room code do things like g.print(...) to
+//     show text, g.has('key') to check your inventory, or g.set('flag') to
+//     remember that something happened.
+//   - A FLAG is a true/false note the game keeps, like 'troll_paid', so it
+//     remembers what you have already done.
+// ============================================================================
 
+// This whole file is wrapped in a function that runs immediately, so its
+// helpers stay private and don't clash with names in other files.
 (function () {
+  // HELPER "has": checks whether the player's typed words (noun) match a
+  // pattern (re, a "regular expression": a text pattern such as /well|bucket/,
+  // where | means "or"). The "|| ''" part means "use empty text if nothing
+  // was typed", which prevents an error.
   const has = (noun, re) => re.test(noun || '');
+
+  // PUZZLE HELPER: tries to open the small "postern" door at the castle gate.
+  // It succeeds if you carry the postern key. Otherwise it gives a hint.
+  // (g.xp(15) awards 15 experience points for solving it.)
 
   function openPostern(g) {
     if (g.flag('postern_open')) { g.print('The postern door is already open.'); return true; }
@@ -26,6 +61,8 @@
     return true;
   }
 
+  // PUZZLE HELPER: unlocks the throne room doors in the Great Hall, but only
+  // if you carry the crown key (won by defeating the gargoyle on the tower).
   function openThroneDoors(g) {
     if (g.flag('throne_unlocked')) { g.print('The great doors stand open.'); return true; }
     if (g.has('crown_key')) {
@@ -38,6 +75,9 @@
     return true;
   }
 
+  // PUZZLE HELPER: frees Snik the goblin from his cell. "how" is the message
+  // describing how you opened it (keys, lockpicks or a spell). He rewards you
+  // with a big clue and the silver sword.
   function freeSnik(g, how) {
     if (g.flag('snik_free')) { g.print('The cell is already open, and Snik is long gone.'); return true; }
     g.set('snik_free');
@@ -49,6 +89,30 @@
     return true;
   }
 
+  // ROOMS: one entry per location, looked up by its ID (like 'square').
+  // What each property means:
+  //   name       - the title shown in gold at the top of the description
+  //   x, y, z    - position on the map grid. x = east/west, y = north/south,
+  //                z = height level (1 and 2 are tower floors, -1 is the dungeon)
+  //   art        - which picture from data.js to show
+  //   desc       - the room description. Usually plain text; sometimes a
+  //                function, so the text can change (e.g. once the troll leaves)
+  //   exits      - which direction leads to which room: n/s/e/w = compass
+  //                directions, u = up, d = down. An exit can also need a flag,
+  //                so it only appears after something happens
+  //   items      - things lying in the room that can be picked up
+  //   enemy      - the monster that lives here
+  //   encounter  - a chance of a random monster on return visits
+  //                (chance 0.25 = 25%; pool = which monsters it might be)
+  //   dark: true - you can't see items here without a torch or the Light spell
+  //   shop       - item IDs sold here
+  //   npc        - a "non-player character": a person you can talk to.
+  //                "talk" is the list of lines they say, one per conversation
+  //   features   - scenery you can examine but not take (kw = words that match it)
+  //   on         - special responses to commands in this room, by verb
+  //                (examine, pay, give, open, push, break...). These run before
+  //                game.js's normal handling of that command
+  //   canExit    - can block a direction (returns a message) or allow it (null)
   const ROOMS = {
     // ================================================================ VILLAGE
     square: {
@@ -60,6 +124,8 @@
         { kw: ['castle', 'ridge', 'duskholm'], text: 'Castle Duskholm squats on the ridge to the north, black against the sky. A green light flickers in its depths now and then, like it is thinking about you.' },
         { kw: ['houses', 'house', 'homes'], text: 'Shuttered, barred and garlanded with garlic. Someone has painted DEAD NOT WELCOME on a door. Someone else has added PLEASE.' },
       ],
+      // A little secret: examining the well gives 5 gold, but only once.
+      // The 'well_coins' flag remembers that you already took them.
       on: {
         examine(g, noun) {
           if (!has(noun, /well|bucket/)) return false;
@@ -84,6 +150,7 @@
           "'A bed's five gold — just say 'rest'. The sheets were washed this year. Probably.'",
           "'Ever since the old king went... hollow... the dead won't stay where we put them. Bad for business. Good for gravediggers. Busy lads.'",
         ] },
+      // "rest" here costs 5 gold, fully restores health and mana, and saves the game.
       on: {
         rest(g) {
           if (!g.spend(5)) { g.print("'Five gold for a bed, love. You've got the look of someone who has less than that.'", 'npc'); return true; }
@@ -133,6 +200,8 @@
       features: [{ kw: ['statue', 'lady', 'dawn', 'candles'], text: 'The Lady of Dawn smiles serenely. Someone has left her a turnip as an offering. She seems to appreciate it.' }],
       npc: { id: 'maud', name: 'Sister Maud', kw: ['maud', 'sister', 'nun', 'priestess'],
         desc: 'A small, round, unflappable woman in grey robes. She has buried half the village twice.',
+        // The first time you talk to Maud she gives you holy water. After
+        // that, this returns false so her normal "talk" lines are used instead.
         onTalk(g) {
           if (g.flag('maud_gift')) return false;
           g.set('maud_gift');
@@ -168,6 +237,7 @@
     },
 
     // ============================================================= WILDERNESS
+    // Outside the village: the road, woods, wolf den, graveyard, mausoleum and bridge.
     road: {
       name: 'Crow Road', x: 0, y: -2, z: 0, art: 'road',
       desc: 'Crow Road winds north toward the ridge where Castle Duskholm squats against the sky, black and broken. The crows here are fat and confident. To the west, the Whispering Woods crowd close; to the east, the leaning stones of a graveyard. The village gate is back south.',
@@ -206,6 +276,9 @@
       enemy: 'ghoul', items: ['tome_smite'],
       features: [{ kw: ['shelves', 'remains', 'castellans', 'castellan'], text: 'The nameplates read like a list of very unlucky men. The newest one is mostly bones and a gnawed belt.' }],
     },
+    // THE TROLL BRIDGE PUZZLE. Grumbold blocks the way north until you
+    // pay 15 gold, give him cheese (the tavern's hint), or defeat him in a fight.
+    // "desc" is a function here so the text changes with what has happened.
     bridge: {
       name: 'The Chasm Bridge', x: 0, y: -3, z: 0, art: 'bridge',
       desc(g) {
@@ -229,6 +302,7 @@
           "'Cheese. Now there's a word. Big stinky wheel o' cheese... ' (he drools a little) '...ahem. Fifteen gold.'",
         ] },
       canExit(g, dir) {
+        // "&&" means AND, "!" means NOT: block north if the troll is here AND has NOT been paid.
         if (dir === 'n' && g.enemyHere() && !g.flag('troll_paid')) {
           return "Grumbold plants a foot the size of a gravestone in your path. 'Toll first, friend. Fifteen gold — or summink tasty.'";
         }
@@ -243,6 +317,7 @@
           g.print("Grumbold bites each coin, tucks them somewhere you'd rather not think about, and squeezes aside. 'Pleasure doin' business. Mind the drop.' (-15 gold)", 'npc');
           return true;
         },
+        // "give X to troll": only the cheese works. It makes him leave for good.
         give(g, noun, itemId) {
           if (!g.enemyHere()) return false;
           if (itemId !== 'cheese') {
@@ -261,6 +336,9 @@
     },
 
     // ================================================================ CASTLE
+    // THE GATE PUZZLE: the portcullis never opens, but the small postern door
+    // can be opened three ways: the key (from the mausoleum ghoul), the
+    // Rogue's "pick lock", or the Knock spell.
     castle_gate: {
       name: 'Gatehouse of Castle Duskholm', x: 0, y: -4, z: 0, art: 'castle_gate',
       desc(g) {
@@ -344,6 +422,8 @@
       features: [{ kw: ['view', 'valley', 'village'], text: 'From up here, Hollowmere looks small and brave, like a candle in a very big room.' },
         { kw: ['gargoyles', 'battlements'], text: 'Ordinary stone gargoyles. Probably. You poke one. It does not poke back. Good.' }],
     },
+    // The Great Hall's north doors need the crown key. If you carry it,
+    // simply walking north unlocks them automatically.
     great_hall: {
       name: 'Great Hall', x: 0, y: -6, z: 0, art: 'hall',
       desc(g) {
@@ -375,6 +455,7 @@
       features: [{ kw: ['cauldron'], text: 'Something green and crusted lines the bottom. It may have been soup once. It may be sentient now.' },
         { kw: ['trapdoor', 'trap'], text: 'A wooden trapdoor with a ladder leading down into the dark.' }],
     },
+    // A dark room: bring a torch or cast Light to see the items here.
     library: {
       name: "The Hollow King's Library", x: 1, y: -6, z: 0, art: 'library', dark: true,
       desc: "Towering shelves of books, several of which are muttering. This is where Varkhul kept his darker studies — and judging by the claw marks, some of the books bite back. The great hall is west.",
@@ -382,6 +463,8 @@
       items: ['tome_lightning', 'scroll_knock', 'old_note'],
       features: [{ kw: ['books', 'shelves', 'book'], text: "You pull a book at random: 'Liches and You: A Beginner's Guide to Eternal Life.' Chapter one is titled 'Pick a Good Jar.'" }],
     },
+    // THE SECRET STAIR: "push throne" sets the 'throne_moved' flag, which
+    // makes the hidden "down" exit to the lich's sanctum appear.
     throne_room: {
       name: 'Throne Room', x: 0, y: -7, z: 0, art: 'throne',
       desc(g) {
@@ -406,6 +489,7 @@
     },
 
     // ============================================================== DUNGEON
+    // Underground (z: -1), reached by the kitchen trapdoor.
     cellar: {
       name: 'Wine Cellar', x: -1, y: -6, z: -1, art: 'dungeon', dark: true,
       desc: 'A wine cellar, long since drunk dry by something with no lips. Broken barrels and shattered bottles crunch underfoot. A ladder leads up to the kitchen; a low archway leads east.',
@@ -420,6 +504,8 @@
       enemy: 'jailer',
       features: [{ kw: ['cards', 'table', 'hand', 'game'], text: 'The hand is holding three kings. It was winning. Sadly, it will never know.' }],
     },
+    // Snik the goblin waits here. Open his cell with the jailer's keys,
+    // "pick lock" (Rogue) or the Knock spell. "present" hides him once freed.
     cells: {
       name: 'The Cells', x: 0, y: -7, z: -1, art: 'dungeon',
       desc(g) {
@@ -468,6 +554,9 @@
       enemy: 'wraith', items: ['silver_goblet', 'mana_potion'],
       features: [{ kw: ['water', 'lights', 'sarcophagi', 'sarcophagus'], text: "The lights beneath the water look like faces. You decide they are fish. Very sad fish." }],
     },
+    // THE KEY TO WINNING: smashing the black jar (the lich's "phylactery",
+    // where he hides his soul) sets 'phylactery_destroyed'. Until then, the
+    // Hollow King comes back to life every time he is defeated.
     bone_pit: {
       name: 'The Bone Pit', x: 2, y: -7, z: -1, art: 'bonepit',
       desc(g) {
@@ -496,6 +585,7 @@
         },
       },
     },
+    // The final battle with Varkhul, the Hollow King.
     sanctum: {
       name: "The Hollow King's Sanctum", x: 0, y: -8, z: -1, art: 'sanctum',
       desc(g) {
@@ -507,5 +597,6 @@
     },
   };
 
+  // Put the finished world into the shared catalogue so game.js can find it.
   window.GameData.ROOMS = ROOMS;
 })();

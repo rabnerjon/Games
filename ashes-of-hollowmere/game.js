@@ -1,23 +1,79 @@
 /* Ashes of Hollowmere — engine, parser and UI.
    Security note: all game text is written with textContent, never innerHTML,
    so nothing a player types (or puts in a save file) can become page code. */
+// ============================================================================
+// WHAT THIS FILE IS (a beginner's guide)
+// ============================================================================
+// game.js is the game's ENGINE: the code that makes everything happen.
+// data.js and rooms.js describe WHAT is in the game (items, monsters, places).
+// This file decides HOW the game runs:
+//   - reading what the player types and working out what they mean (the "parser")
+//   - moving between rooms, picking things up, buying and selling
+//   - turn-based combat and spells
+//   - saving and loading progress with localStorage
+//   - drawing everything on screen: text, health bars, the map, buttons
+//
+// Comments (after //, or between /* and */) are notes for humans; the browser
+// skips them.
+//
+// Terms you'll meet in this file:
+//   - VARIABLE: a named box holding a value. "const" = its contents are never
+//     swapped for a different value; "let" = it can be changed later.
+//   - FUNCTION: a named, reusable set of instructions. "function name(x) { }"
+//     and the shorter "(x) => ..." ("arrow function") are two ways to write one.
+//   - OBJECT: named values in curly braces { }. ARRAY: a list in square brackets [ ].
+//   - The DOM ("Document Object Model"): the browser's live version of the
+//     HTML page, which JavaScript can read and change.
+//   - EVENT: something that happens on the page (a click, a key press). An
+//     "event listener" is code that waits for an event and then runs.
+//   - localStorage: a small storage area in the visitor's browser that keeps
+//     data even after the page is closed.
+//   - JSON ("JavaScript Object Notation"): a way to turn an object into plain
+//     text (so it can be stored) and back again.
+// ============================================================================
+
+// The whole engine is wrapped in a function that runs immediately. Everything
+// inside is private, so other scripts (or curious visitors typing in the
+// browser's developer console) can't easily tamper with the game's variables.
 (function () {
+  // Strict mode: makes JavaScript report common mistakes as errors.
   'use strict';
 
+  // ---- SETTINGS AND CONSTANTS: fixed values used throughout the file ----
+  // D is a short nickname for the content catalogue built by data.js and rooms.js.
   const D = window.GameData;
+  // localStorage stores data under a name called a "key". These are our two keys:
+  // one for the saved game, one for the Hall of Records (lifetime stats).
+  // "v1" is a version number, in case the save format ever changes.
   const SAVE_KEY = 'ashesOfHollowmere.save.v1';
   const RECORDS_KEY = 'ashesOfHollowmere.records.v1';
   const SAVE_VERSION = 1;
+  // Keep at most 400 lines of story on screen, so a long game doesn't slow the page down.
   const MAX_LINES = 400;
+  // Commands are cut off at 120 characters (a safety limit).
   const MAX_INPUT = 120;
+  // Experience points needed to reach the next level. The number at position 1
+  // is what level 1 needs (30), position 2 is what level 2 needs (80), and so on.
   const XP_TABLE = [0, 30, 80, 150, 250, 370, 520, 700, 920, 1200, 1500];
+  // All the ways a player can type a direction, mapped to one short code.
+  // For example "north" and "n" both mean 'n'.
   const DIR_ALIASES = { n: 'n', north: 'n', s: 's', south: 's', e: 'e', east: 'e', w: 'w', west: 'w',
     u: 'u', up: 'u', upstairs: 'u', upward: 'u', d: 'd', down: 'd', downstairs: 'd', downward: 'd' };
+  // The reverse: turns a short code back into a full word to show the player.
   const DIR_NAMES = { n: 'north', s: 'south', e: 'east', w: 'west', u: 'up', d: 'down' };
+  // Labels shown above the map for each height level (the z number in rooms.js).
   const LEVEL_NAMES = { 2: 'Tower Roof', 1: 'Tower Study', 0: 'Hollowmere & Duskholm', '-1': 'The Dungeons' };
+  // "Filler" words the parser ignores, so "take the sword" means the same as
+  // "take sword". A Set is a list where each word appears only once and can
+  // be checked very quickly.
   const FILLER = new Set(['the', 'a', 'an', 'to', 'at', 'with', 'on', 'in', 'into', 'from', 'of', 'my', 'some',
     'that', 'this', 'about', 'for', 'using', 'upon', 'around', 'inside', 'under', 'please', 'it']);
 
+  // VERB_MAP translates many words into one "canonical" (official) command.
+  // For example "get", "grab" and "take" all become 'take'. addVerbs is a
+  // little function that fills in the map: for each word in the list, it
+  // records which command that word means. "forEach" runs the code once per
+  // item in a list.
   const VERB_MAP = {};
   const addVerbs = (canon, words) => words.forEach((w) => { VERB_MAP[w] = canon; });
   addVerbs('look', ['look', 'l']);
@@ -59,25 +115,51 @@
   addVerbs('map', ['map']);
   addVerbs('fun', ['jump', 'sing', 'dance', 'xyzzy', 'plugh', 'hello', 'hi', 'cry', 'scream', 'laugh', 'shout', 'yell', 'swim', 'think']);
 
+  // Two-word commands that mean something different from their first word
+  // alone. "pick up" means take, but "pick lock" means picklock.
   const MULTI = { 'pick up': 'take', 'pick lock': 'picklock', 'look at': 'examine', 'look in': 'examine',
     'look into': 'examine', 'look under': 'examine', 'look around': 'look', 'talk to': 'talk', 'speak to': 'talk',
     'speak with': 'talk', 'talk with': 'talk', 'put on': 'equip', 'go to': 'go', 'run away': 'flee', 'lie down': 'rest' };
 
+  // ---- THE GAME'S MEMORY while it runs ----
+  // S ("state") holds everything about the current adventure: your stats,
+  // inventory, location and progress. It is what gets saved to localStorage.
+  // C holds the current fight (or null, meaning "nothing", when not fighting).
+  // hist and histPos remember your past commands so the up/down arrow keys can recall them.
   let S = null;   // saved game state
   let C = null;   // current combat (never saved)
   const hist = [];
   let histPos = 0;
 
+  // ---- SMALL HELPER FUNCTIONS used all over the file ----
+  // $('output') finds the HTML element with id="output" (a common shortcut name).
   const $ = (id) => document.getElementById(id);
+  // rand(1, 6): a random whole number from 1 to 6, like rolling a die.
+  // Math.random() gives a random decimal between 0 and 1; Math.floor rounds down.
   const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+  // chance(0.25): true 25% of the time, false the rest.
   const chance = (p) => Math.random() < p;
+  // pick([...]): chooses one random entry from a list (used for varied messages).
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  // own(obj, 'x'): does this object really have its OWN property called 'x'?
+  // (A safer check than obj.x, which can also find hidden built-in properties.
+  // This matters for security when checking data loaded from localStorage.)
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  // item('torch'): looks up an item's details from data.js.
   const item = (id) => D.ITEMS[id];
+  // cap('sword') gives 'Sword' (capitalizes the first letter).
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  // fill('hits you for {d}', { d: 5 }) gives 'hits you for 5'. It swaps
+  // {placeholders} in message text for real values.
   const fill = (s, map) => s.replace(/\{(\w)\}/g, (m, k) => (own(map, k) ? String(map[k]) : m));
 
   // ================================================================ OUTPUT
+  // print(): adds one line of text to the story log.
+  //   text = what to show; cls = a CSS class that sets its color (see style.css).
+  // SECURITY: it uses "textContent", which always shows text as plain text.
+  // Even if someone typed HTML code, like <script>, it would just appear as
+  // letters on screen and never run. (The risky alternative, "innerHTML",
+  // is never used in this game.)
   function print(text, cls) {
     const out = $('output');
     const p = document.createElement('p');
@@ -86,9 +168,13 @@
     out.appendChild(p);
     while (out.childElementCount > MAX_LINES) out.removeChild(out.firstChild);
   }
+  // Scrolls the story log to the bottom so the newest text is visible.
   function scrollOutput() { const o = $('output'); o.scrollTop = o.scrollHeight; }
 
   // ========================================================= DERIVED STATS
+  // "Derived" stats are calculated rather than stored: e.g. your maximum
+  // health is your base health PLUS bonuses from what you are wearing.
+  // equipStat('def') adds up a stat across your weapon, armor and amulet.
   function equipStat(stat) {
     let t = 0;
     for (const id of [S.weapon, S.armor, S.amulet]) if (id && item(id)[stat]) t += item(id)[stat];
@@ -98,10 +184,13 @@
   const maxMp = () => S.baseMp + equipStat('mp');
   const defense = () => S.baseDef + equipStat('def');
   const spellPower = () => D.CLASSES[S.cls].spellPower + equipStat('spell');
+  // XP needed for the next level ("||" means "or": if the table runs out, use a formula instead).
   const xpNext = () => XP_TABLE[S.level] || S.level * S.level * 15;
   const room = () => D.ROOMS[S.room];
   const hasItem = (id) => S.inv.includes(id) || S.weapon === id || S.armor === id || S.amulet === id;
 
+  // Lists the exits from a room that are currently open. Hidden exits (like
+  // the stair under the throne) only count once their flag is set.
   function exitsOf(id) {
     const out = {};
     for (const [d, v] of Object.entries(D.ROOMS[id].exits || {})) {
@@ -110,18 +199,24 @@
     }
     return out;
   }
+  // Can the player see? True if the room isn't dark, OR they carry a torch,
+  // OR they lit it with the Light spell.
   function isLit(id) {
     id = id || S.room;
     return !D.ROOMS[id].dark || S.inv.includes('torch') || !!S.flags['lit_' + id];
   }
+  // Returns the person in this room you can talk to, or null if there is nobody.
   function npcHere() {
     const n = room().npc;
     if (!n) return null;
     if (n.present && !n.present(api)) return null;
     return n;
   }
+  // Some room descriptions are functions (so they can change). This runs them
+  // if needed and returns the final text either way.
   const resolve = (v) => (typeof v === 'function' ? v(api) : v);
 
+  // Removes ONE copy of an item from the inventory. Returns true if it was there.
   function removeInv(id) {
     const i = S.inv.indexOf(id);
     if (i >= 0) { S.inv.splice(i, 1); return true; }
@@ -129,6 +224,10 @@
   }
 
   // ====================================================== API FOR ROOMS.JS
+  // An "API" (Application Programming Interface) is a set of tools one piece
+  // of code offers to another. This is the "g" toolbox that puzzle code in
+  // rooms.js receives. It only offers safe, simple actions (show text, check
+  // or give an item, set a flag), so room code can't accidentally break the engine.
   const api = {
     print: (t, c) => print(t, c || 'desc'),
     flag: (n) => !!S.flags[n],
@@ -149,6 +248,9 @@
   };
 
   // ================================================================= STATE
+  // Builds a brand-new adventure for a hero with the given name and class:
+  // starting stats and gear from data.js, the village square as the starting
+  // room, and a fresh copy of every room's items and monsters.
   function newState(name, clsId) {
     const c = D.CLASSES[clsId];
     const s = {
@@ -167,10 +269,19 @@
   }
 
   // ============================================================= SAVE/LOAD
+  // autosave(): writes the whole adventure into localStorage.
+  // localStorage can only store text, so JSON.stringify turns the state
+  // object into a text string first. It skips saving mid-fight, after death
+  // or after winning. "try/catch" means: TRY this, and if it fails (for
+  // example, storage is full or blocked in a private window), CATCH the
+  // error quietly instead of crashing the game.
   function autosave() {
     if (!S || C || S.hp <= 0 || S.won) return;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage full or blocked */ }
   }
+  // SECURITY: tidies a hero name. Keeps only letters, numbers, spaces,
+  // apostrophes and hyphens, squeezes extra spaces, and limits it to 20
+  // characters. An empty name becomes "Wanderer".
   function cleanName(n) {
     return String(n || '').replace(/[^\p{L}\p{N} '\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20) || 'Wanderer';
   }
@@ -184,6 +295,13 @@
     try { o = JSON.parse(raw); } catch (e) { return null; }
     try { return validateSave(o); } catch (e) { return null; }
   }
+  // SECURITY: "validation" means checking data before trusting it. Anyone can
+  // edit their own localStorage, so a save could be broken or malicious. This
+  // checks every field: numbers must be whole and within sensible limits, and
+  // every room, item, spell and class must be one that really exists. If
+  // anything is wrong, it returns null ("no valid save"). If it passes, it
+  // builds a brand-new state and copies over ONLY the known, checked fields,
+  // so nothing unexpected can sneak in.
   function validateSave(o) {
     const int = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
     const isId = (table, id) => typeof id === 'string' && own(table, id);
@@ -225,6 +343,8 @@
   }
 
   // ============================================================ MOVEMENT
+  // Prints the current room: its name, description (or a warning if it's
+  // dark), the items you can see, and the exits.
   function describeRoom() {
     const r = room();
     print(r.name, 'room-title');
@@ -241,12 +361,17 @@
     const ex = Object.keys(exitsOf(S.room)).map((d) => DIR_NAMES[d]);
     print('Exits: ' + (ex.length ? ex.join(', ') : 'none') + '.', 'exits');
   }
+  // Turns a list of item IDs into readable text, grouping duplicates:
+  // e.g. "2 × healing potion, torch".
   function listNames(ids) {
     const counts = {};
     ids.forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
     return Object.entries(counts).map(([id, n]) => (n > 1 ? n + ' × ' + item(id).name : item(id).name)).join(', ');
   }
 
+  // Tries to walk in a direction. It refuses if you're in a fight, if there's
+  // no exit that way, or if the room blocks you (like the troll). In the dark
+  // you may bump into things. Otherwise you move.
   function go(dir) {
     if (C) { print("You can't just stroll off mid-fight. Try 'flee'.", 'sys'); return; }
     const ex = exitsOf(S.room);
@@ -264,6 +389,9 @@
     enterRoom(ex[dir]);
   }
 
+  // Arrives in a new room: records the visit, regenerates a little health and
+  // mana, describes the room, then either starts a fight (if a monster lives
+  // here or a random one appears) or saves the game.
   function enterRoom(id) {
     S.prev = S.room;
     S.room = id;
@@ -285,6 +413,9 @@
   }
 
   // ================================================================ COMBAT
+  // Combat is "turn-based": you act, then the enemy acts, and so on.
+  // startCombat sets up a fight with a monster. "temp" is true for random
+  // monsters that shouldn't stay in the room afterwards.
   function startCombat(id, temp) {
     const e = D.ENEMIES[id];
     const the = e.proper ? e.name : 'the ' + e.name;
@@ -292,8 +423,15 @@
     print(e.intro || 'A ' + e.name + ' attacks!', 'danger');
     print("You're in combat! Attack, cast a spell, use an item, defend, or flee.", 'sys');
   }
+  // How armor reduces damage: subtract 60% of the defense from the hit, but
+  // every hit still does at least 35% of its full damage (so armor can't make
+  // you completely invincible).
   const mitigate = (roll, def) => Math.max(Math.ceil(roll * 0.35), roll - Math.floor(def * 0.6));
 
+  // Your weapon attack: 90% chance to hit. Damage = a random roll in the
+  // weapon's range + your strength, doubled on a critical hit, then reduced
+  // by the enemy's armor. Warriors sometimes strike twice; the silver sword
+  // does extra damage to the undead.
   function playerAttack() {
     const w = item(S.weapon);
     const strikes = S.cls === 'warrior' && chance(0.15) ? 2 : 1;
@@ -311,12 +449,17 @@
     }
   }
 
+  // After you act: if the enemy is out of health, handle its defeat;
+  // otherwise it's the enemy's turn.
   function afterPlayerTurn() {
     if (!C) return;
     if (C.hp <= 0 && enemyDefeated()) return;
     enemyTurn();
   }
 
+  // When an enemy's health hits zero: the lich revives if his jar is intact;
+  // otherwise you collect gold, item drops and XP, and the monster is removed.
+  // Defeating the lich wins the game.
   // Returns true if combat is over.
   function enemyDefeated() {
     const e = C.e;
@@ -344,6 +487,10 @@
     return true;
   }
 
+  // The enemy's turn: poison hurts it, a frozen enemy loses its turn, the
+  // lich casts his big spell every third turn, and otherwise it tries to
+  // hit you (halved if you chose "defend"). Some enemies poison you or drain
+  // your mana. If your health reaches zero, you die.
   function enemyTurn() {
     const e = C.e;
     C.turn++;
@@ -377,6 +524,9 @@
     if (S.hp <= 0) die();
   }
 
+  // Adds experience points. A "while" loop repeats as long as its condition
+  // is true, so if you earn enough XP for several levels at once, you level
+  // up several times. Each level raises your stats and fully heals you.
   function gainXp(n) {
     S.xp += n;
     print('+' + n + ' XP', 'xp');
@@ -398,6 +548,7 @@
   // ======================================================= HALL OF RECORDS
   // Lifetime stats kept in localStorage, separate from the saved game, so they
   // survive refreshes, closing the browser, deaths and new games.
+  // The starting values: all zeros and no record-holder yet.
   function emptyRecords() {
     return { started: 0, deaths: 0, wins: 0, bestLevel: 0, bestHero: '', fewestMoves: 0 };
   }
@@ -413,17 +564,22 @@
     if (!r.bestLevel) r.bestHero = '';
     return r;
   }
+  // Loads the records, applies a change (passed in as a function, such as
+  // "add 1 to deaths"), and saves them back to localStorage.
   function updateRecords(change) {
     const r = readRecords();
     change(r);
     try { localStorage.setItem(RECORDS_KEY, JSON.stringify(r)); } catch (e) { /* storage full or blocked */ }
     return r;
   }
+  // If the current hero beat the highest level on record, remember their level and name.
   function noteLevel() {
     updateRecords((r) => {
       if (S.level > r.bestLevel) { r.bestLevel = S.level; r.bestHero = S.name + ' the ' + D.CLASSES[S.cls].name; }
     });
   }
+  // "Render" means draw on screen: fills the Hall of Records panel on the
+  // start screen, or shows "No legends yet" if no game has been played.
   function renderRecords() {
     const r = readRecords();
     $('records-empty').hidden = r.started > 0;
@@ -437,6 +593,8 @@
     $('rec-moves').textContent = r.fewestMoves || '—';
   }
 
+  // Game over: counts the death in the Hall of Records and shows a pop-up
+  // offering to load the last save or start again.
   function die() {
     S.hp = 0;
     C = null;
@@ -453,6 +611,8 @@
     ].filter(Boolean));
   }
 
+  // Victory: prints the ending, deletes the finished save, records the win
+  // (and fastest win) in the Hall of Records, and shows your final stats.
   function win() {
     S.won = true;
     const mins = Math.max(1, Math.round((Date.now() - S.started) / 60000));
@@ -471,6 +631,10 @@
   }
 
   // ================================================================ PARSER
+  // A "parser" breaks text into parts a program can understand. parse()
+  // lowercases what the player typed, removes punctuation, splits it into
+  // words, and works out the VERB (the action, e.g. 'take') and the REST
+  // (what it applies to, e.g. ['rusty', 'sword']).
   function parse(raw) {
     const words = raw.toLowerCase().replace(/'/g, '').replace(/[^a-z0-9\s?-]/g, ' ').split(/\s+/).filter(Boolean);
     if (!words.length) return null;
@@ -482,11 +646,16 @@
     else { verb = VERB_MAP[words[0]] || words[0]; rest = words.slice(1); }
     return { verb, rest, raw: words };
   }
+  // Removes filler words ("the", "at"...), leaving the important ones.
   const nounOf = (words) => words.filter((w) => !FILLER.has(w));
 
+  // All the words that can refer to a thing: its name split into words, plus its keywords.
   function wordsOf(name, kw) {
     return new Set(name.toLowerCase().replace(/'/g, '').split(/[\s-]+/).concat(kw || []));
   }
+  // "Candidates" are the possible things the player might mean. Each one gets
+  // a score: one point for every typed word that fits it. The highest score
+  // wins, so "healing potion" picks the healing potion over the mana potion.
   // Finds the best match for the typed words among {id, name, kw} candidates.
   function match(words, cands) {
     if (!words.length) return null;
@@ -501,14 +670,20 @@
     }
     return bestScore > 0 ? best : null;
   }
+  // Builders for candidate lists: any list of item IDs, just your pack, or your pack plus what you're wearing.
   const itemCands = (ids) => [...new Set(ids)].map((id) => ({ id, name: item(id).name, kw: item(id).kw }));
   const invCands = () => itemCands(S.inv);
   const allMyCands = () => itemCands(S.inv.concat([S.weapon, S.armor, S.amulet].filter(Boolean)));
 
   // =============================================================== COMMANDS
+  // The only commands allowed during a fight. (No wandering off mid-battle!)
   const COMBAT_OK = new Set(['attack', 'cast', 'drink', 'eat', 'use', 'throw', 'defend', 'flee', 'look', 'examine',
     'inventory', 'stats', 'spells', 'help', 'equip', 'wait', 'map']);
 
+  // run(): the heart of the game. Every typed command and every button click
+  // ends up here. It: (1) cuts the input to a safe length, (2) shows it in
+  // the log, (3) parses it, (4) finds the matching command in CMDS below and
+  // runs it, (5) autosaves, and (6) refreshes the screen.
   function run(input) {
     if (!S) return;
     const text = String(input).slice(0, MAX_INPUT).trim();
@@ -530,13 +705,21 @@
     scrollOutput();
   }
 
+  // A "hook" is a spot where other code can plug in. This checks whether the
+  // current room (in rooms.js) has its own special response for this verb,
+  // such as "push" in the throne room, and runs it if so.
   function roomHook(verb, noun, extra) {
     const r = room();
     if (r.on && r.on[verb]) return !!r.on[verb](api, noun.join(' '), extra);
     return false;
   }
 
+  // CMDS: one function per command the player can use. The function's name is
+  // the command (go, look, take, attack...). "noun" is the list of important
+  // words typed after the verb; "p" is the full parsed command, for commands
+  // that need more detail (like "give X to Y").
   const CMDS = {
+    // "go north", "go tavern", "climb stairs"...
     go(noun) {
       const w = noun.filter((x) => x !== 'go');
       let dir = w.map((x) => DIR_ALIASES[x]).find(Boolean);
@@ -558,6 +741,8 @@
       if (C) { print('You are fighting ' + C.the + ' (' + Math.max(0, C.hp) + '/' + C.max + ' health).', 'combat'); return; }
       describeRoom();
     },
+    // "examine X": looks for X in this order: you, your items, special room
+    // responses, items on the floor, the enemy, the person here, then scenery.
     examine(noun) {
       if (!noun.length) { describeRoom(); return; }
       if (noun.some((w) => ['me', 'self', 'myself'].includes(w))) { CMDS.stats(); return; }
@@ -583,6 +768,8 @@
       }
       print(isLit() ? "You don't see anything like that here." : "It's too dark to make anything out.", 'sys');
     },
+    // "take X" or "take all": moves items from the room into your inventory
+    // (gold goes straight into your purse). Won't work in the dark.
     take(noun) {
       if (!noun.length) { print('Take what?', 'sys'); return; }
       if (roomHook('take', noun)) return;
@@ -621,6 +808,8 @@
       print(S.inv.length ? 'You are carrying: ' + listNames(S.inv) + '.' : 'Your pack is empty, apart from some lint.', 'desc');
       print('Gold: ' + S.gold + '.', 'loot');
     },
+    // "equip X": wear or wield an item. Whatever was in that slot goes back
+    // into your pack. During a fight this uses up your turn.
     equip(noun) {
       const m = match(noun, invCands());
       if (!m) { print(noun.length ? "You aren't carrying that." : 'Equip what?', 'sys'); return; }
@@ -637,6 +826,8 @@
     },
     drink(noun) { consume(noun, 'drink'); },
     eat(noun) { consume(noun, 'eat'); },
+    // "use X": works out the sensible action for each kind of item and hands
+    // off to it (drink a potion, read a scroll, equip a sword, and so on).
     use(noun) {
       const m = match(noun, allMyCands());
       if (!m) { print("You don't have that.", 'sys'); return; }
@@ -650,6 +841,7 @@
       else if (m.id === 'torch') print('The torch is already lit. It lights your way automatically.', 'sys');
       else print("You aren't sure how to use the " + it.name + '.', 'sys');
     },
+    // "read X": shows a note's text, or learns the spell on a scroll (which is used up).
     read(noun) {
       const m = match(noun, invCands());
       if (!m) {
@@ -673,6 +865,7 @@
       for (const id of S.spells) { const sp = D.SPELLS[id]; print('  ' + sp.name + ' — ' + sp.mp + ' MP. ' + sp.desc, 'magic'); }
       print("Type 'cast <spell name>' to use one.", 'sys');
     },
+    // "cast X": finds which known spell you mean, then castSpell() does the work.
     cast(noun) {
       if (!noun.length) { print('Cast what? Type "spells" to see what you know.', 'sys'); return; }
       const known = S.spells.map((id) => ({ id, name: D.SPELLS[id].name, kw: D.SPELLS[id].kw }));
@@ -684,6 +877,7 @@
       }
       castSpell(m.id);
     },
+    // "attack": starts a fight if a monster is here, then swings your weapon.
     attack(noun) {
       if (!C) {
         const en = S.enemies[S.room];
@@ -698,6 +892,7 @@
       playerAttack();
       afterPlayerTurn();
     },
+    // "defend": halves the next hit and recovers 2 mana.
     defend() {
       if (!C) { print('You take up a defensive stance against nothing in particular. The air backs off.', 'sys'); return; }
       C.defending = true;
@@ -705,6 +900,8 @@
       print('You raise your guard and catch your breath. (+2 MP)', 'combat');
       enemyTurn();
     },
+    // "flee": a chance (better for Rogues) to escape to the previous room.
+    // If it fails, the enemy gets a free attack.
     flee() {
       if (!C) { print('You flee from nothing. Very dramatic.', 'sys'); return; }
       if (chance(S.cls === 'rogue' ? 0.85 : 0.6)) {
@@ -719,6 +916,9 @@
         enemyTurn();
       }
     },
+    // "talk": the person here says their next line. S.talk counts how many
+    // times you've spoken to each person, and "%" (remainder) loops back to
+    // their first line after the last.
     talk(noun) {
       const npc = npcHere();
       if (!npc) {
@@ -732,6 +932,7 @@
       print(npc.talk[i % npc.talk.length], 'npc');
       S.talk[npc.id] = i + 1;
     },
+    // SHOPPING: "list" shows what's for sale, "buy" spends gold, "sell" pays half the item's value.
     list() {
       const shop = room().shop;
       if (!shop) { print('There is nothing for sale here.', 'sys'); return; }
@@ -761,6 +962,8 @@
       S.gold += price;
       print('You sell the ' + it.name + ' for ' + price + ' gold.', 'loot');
     },
+    // These commands only do something in particular rooms (the tavern,
+    // chapel, troll bridge...). Otherwise they give a friendly "not here" reply.
     rest() {
       if (roomHook('rest', [])) return;
       print("You can't rest here. Too many things would like to eat you in your sleep. The tavern has beds.", 'sys');
@@ -773,6 +976,7 @@
       if (roomHook('pay', [])) return;
       print('There is no one here to pay.', 'sys');
     },
+    // "give X to Y": splits the typed words at "to" to find the item.
     give(noun, p) {
       const idx = p.rest.indexOf('to');
       const itemWords = nounOf(idx >= 0 ? p.rest.slice(0, idx) : p.rest);
@@ -790,6 +994,7 @@
     },
     push(noun) { if (!roomHook('push', noun)) print('You push it. Nothing happens. You feel a little silly.', 'sys'); },
     break(noun) { if (!roomHook('break', noun)) print("Violence isn't the answer here. Well, not to that question.", 'sys'); },
+    // "throw holy water at X": big damage to the undead, a splash to anything else.
     throw(noun, p) {
       const idx = p.rest.indexOf('at');
       const itemWords = nounOf(idx >= 0 ? p.rest.slice(0, idx) : p.rest);
@@ -805,6 +1010,7 @@
         : 'The holy water splashes over ' + C.the + '. It is not undead — just wet now, and annoyed. (' + dmg + ' damage)', 'magic');
       afterPlayerTurn();
     },
+    // "stats": prints your character sheet.
     stats() {
       const c = D.CLASSES[S.cls];
       const w = item(S.weapon);
@@ -829,6 +1035,7 @@
         'Tips: examine everything, talk to everyone twice, and press the up arrow to repeat a command.',
       ].forEach((l) => print(l, 'help'));
     },
+    // save / load / restart: manage your saved game in localStorage.
     save() {
       if (C) { print("You can't save in the middle of a fight.", 'sys'); return; }
       autosave();
@@ -851,6 +1058,7 @@
     map() {
       print('Your map is in the side panel; it fills in as you explore. You have discovered ' + Object.keys(S.visited).length + ' of ' + Object.keys(D.ROOMS).length + ' places.', 'sys');
     },
+    // Joke replies for silly commands like "jump", "dance" or "xyzzy".
     fun(noun, p) {
       const w = p.raw[0];
       const lines = {
@@ -872,6 +1080,8 @@
     },
   };
 
+  // Drinks or eats an item: removes it from your pack and applies its
+  // healing, mana or poison cure. In a fight this uses your turn.
   function consume(noun, how) {
     const m = match(noun, invCands());
     if (!m) { print(noun.length ? "You don't have that." : cap(how) + ' what?', 'sys'); return; }
@@ -890,6 +1100,9 @@
     if (C) enemyTurn();
   }
 
+  // Casts a spell if you have enough mana. A "switch" statement picks which
+  // block of code to run based on a value, here the spell's type: each
+  // "case" handles one type, and "return" ends the function after it.
   function castSpell(id) {
     const sp = D.SPELLS[id];
     if (S.mp < sp.mp) { print('You need ' + sp.mp + ' mana to cast ' + sp.name + ', but you only have ' + S.mp + '.', 'sys'); return; }
@@ -954,12 +1167,18 @@
   }
 
   // ===================================================================== UI
+  // "UI" = User Interface: everything the player sees and clicks.
+  // setBar(): sets a health/mana/XP bar's colored fill to the right
+  // percentage width and writes the numbers on it (e.g. "30 / 42").
   function setBar(fillId, textId, cur, max) {
     const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
     $(fillId).style.width = pct + '%';
     $(textId).textContent = Math.max(0, cur) + ' / ' + max;
   }
 
+  // Creates a new <button> element in code. The command it sends is stored
+  // in "dataset.cmd" (the button's data-cmd attribute) for the click
+  // listener in init() to read. "title" is the tooltip shown on hover.
   function button(label, cmd, cls, title) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -970,6 +1189,10 @@
     return b;
   }
 
+  // Refreshes the whole screen after every command: character sheet, bars,
+  // picture, enemy panel, compass buttons, quick actions, inventory, spells
+  // and map. Redrawing everything each time keeps the screen in step with
+  // the game state, at the cost of a little extra work.
   function updateUI() {
     if (!S) return;
     const c = D.CLASSES[S.cls];
@@ -1057,6 +1280,11 @@
     drawMap();
   }
 
+  // Draws the map on the <canvas>. "ctx" (context) is the canvas's drawing
+  // toolkit. The current room is drawn in the center; other visited rooms on
+  // the same level sit around it, joined by lines for their exits. Short
+  // stubs show exits to places not yet visited. "dpr" (device pixel ratio)
+  // keeps the drawing sharp on high-resolution screens.
   function drawMap() {
     const cv = $('map');
     const ctx = cv.getContext('2d');
@@ -1108,6 +1336,8 @@
   }
 
   // ========================================================= SCREENS/MODAL
+  // Shows the pop-up box with a title, some paragraphs and a row of buttons.
+  // Each button is given a function ("action") to run when clicked.
   function showModal(title, paragraphs, buttons) {
     $('modal-title').textContent = title;
     const body = $('modal-body');
@@ -1128,7 +1358,10 @@
   }
   function hideModal() { $('modal').hidden = true; }
 
+  // Which class card the player has clicked on the start screen (none yet).
   let chosenClass = null;
+  // Shows the start screen, offers "Continue" only if a valid save exists,
+  // and fills in the Hall of Records.
   function showStart() {
     S = null; C = null;
     $('app').hidden = true;
@@ -1141,6 +1374,9 @@
     $('begin-btn').disabled = true;
   }
 
+  // Switches from the start screen to the game. For a new game it shows the
+  // story intro and counts it in the Hall of Records; for a loaded game it
+  // says "Welcome back".
   function beginGame(state, isNew) {
     S = state;
     C = null;
@@ -1166,6 +1402,7 @@
     $('cmd').focus();
   }
 
+  // Loads the saved game (only if it passes validation).
   function loadGame() {
     const s = readSave();
     if (!s) { showStart(); return; }
@@ -1173,6 +1410,9 @@
   }
 
   // ================================================================ WIRE-UP
+  // "Wiring up" means connecting the HTML page to the code: telling the
+  // browser which function to run when a button is clicked, a form is
+  // submitted, or a key is pressed.
   // Clickjacking defence: GitHub Pages can't send the frame-ancestors header,
   // so refuse to run if another site has loaded the game inside a frame.
   function isFramed() {
@@ -1193,6 +1433,10 @@
     document.body.append(box);
   }
 
+  // init() ("initialize") runs once when the page loads. It builds the class
+  // cards and attaches all the event listeners. "addEventListener('click', ...)"
+  // means "when this is clicked, run this code". "ev.preventDefault()" stops
+  // the browser's default reaction to a form submit, which would reload the page.
   function init() {
     if (isFramed()) { showFramedNotice(); return; }
     // Class cards
@@ -1253,5 +1497,7 @@
     showStart();
   }
 
+  // Start everything once the browser has finished reading the HTML page
+  // ("DOMContentLoaded"), so all the elements game.js needs already exist.
   document.addEventListener('DOMContentLoaded', init);
 })();

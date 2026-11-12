@@ -1,51 +1,122 @@
+/*
+  ==========================================================================
+  ASHES OF HOLLOWMERE — style.css
+  ==========================================================================
+  This is the "CSS" file. CSS (Cascading Style Sheets) controls how the page
+  LOOKS: colors, fonts, sizes, spacing and where things sit on the screen.
+  index.html links to this file, so these rules apply to that page.
+
+  How a CSS rule works:
+      selector { property: value; }
+  - The SELECTOR picks which parts of the page the rule applies to:
+      button      = every <button> element
+      .panel      = every element with class="panel"   (a dot means "class")
+      #output     = the one element with id="output"   (a # means "id")
+      .a .b       = an element with class "b" INSIDE one with class "a"
+      button.good = a <button> that also has class "good"
+      :hover etc. = a "pseudo-class": a state, like "while the mouse is over it"
+  - Each PROPERTY: VALUE pair changes one thing, like color: red;
+
+  "Cascading" means that when several rules target the same element, the
+  more specific or later rule wins.
+
+  Units: px = pixels (screen dots). em = relative to the current text size.
+  % = percent of the container. vw/vh = percent of the window's width/height.
+  Colors like #e0b44c are "hex codes": red, green and blue amounts in base 16.
+  rgba(0, 0, 0, .75) = red, green, blue and alpha (see-through-ness, 0 to 1).
+
+  Text between slash-star and star-slash, like this, is a COMMENT. The browser
+  ignores it.
+  ==========================================================================
+*/
+
+/*
+  ":root" means the whole page. The "--name: value" lines create CSS VARIABLES:
+  named values we can reuse anywhere with var(--name). Changing a color here
+  changes it everywhere it is used, which keeps the look consistent.
+*/
 :root {
+  /* Page background (almost black, slightly purple). */
   --bg: #0b0a0f;
+  /* Background of panels and boxes, and a slightly lighter version. */
   --panel: #15121b;
   --panel-2: #1c1824;
+  /* Color of thin border lines. */
   --border: #3a3247;
+  /* Normal text (warm off-white) and dimmer text for less important things. */
   --text: #d8cfc0;
   --dim: #8a8094;
+  /* Accent colors used for headings, damage, healing, magic and so on. */
   --gold: #e0b44c;
   --red: #e0675b;
   --green: #86c98a;
   --blue: #6fa8dc;
   --purple: #b98ee6;
   --amber: #f0a35e;
+  /*
+    The font list. A "monospace" font gives every letter the same width,
+    which keeps ASCII art lined up. The browser uses the first font in the
+    list that the computer has installed.
+  */
   --mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
 
+/*
+  "*" means "every element". box-sizing: border-box makes an element's width
+  include its padding and border, which makes sizes much easier to predict.
+*/
 * { box-sizing: border-box; }
+/*
+  Anything with the HTML "hidden" attribute is not displayed at all.
+  "!important" makes this rule beat any other rule, so a hidden thing is
+  always hidden. game.js shows and hides parts of the page this way.
+*/
 [hidden] { display: none !important; }
 
+/* Remove the browser's default outer gap, and let the page fill the window's full height. */
 html, body { margin: 0; height: 100%; }
 body {
+  /* A soft purple glow at the top fading into the dark background. */
   background: radial-gradient(ellipse at top, #1a1422 0%, var(--bg) 60%);
   color: var(--text);
   font-family: var(--mono);
   font-size: 15px;
+  /* Space between lines of text: 1.5 times the text size, for easier reading. */
   line-height: 1.5;
 }
 
+/* ---- Buttons: the default look for every button in the game ---- */
 button {
+  /* "inherit" = use the same font as the surrounding text. */
   font: inherit;
   color: var(--text);
   background: var(--panel-2);
   border: 1px solid var(--border);
+  /* Rounded corners. */
   border-radius: 6px;
+  /* Padding is the space INSIDE the border: 6px top and bottom, 12px left and right. */
   padding: 6px 12px;
+  /* Show the "hand" pointer when hovering, so it's clear the button is clickable. */
   cursor: pointer;
+  /* Animate color and position changes smoothly instead of instantly. */
   transition: background .15s, border-color .15s, transform .05s;
 }
+/* While the mouse is over a button that is not disabled: gold border and a lighter background. */
 button:hover:not(:disabled) { border-color: var(--gold); background: #262031; }
+/* While a button is being pressed: nudge it down 1 pixel so it feels "pushed". */
 button:active:not(:disabled) { transform: translateY(1px); }
+/* Disabled (unclickable) buttons are faded out. */
 button:disabled { opacity: .35; cursor: default; }
+/* ACCESSIBILITY: show a clear gold outline when someone moves between controls with the keyboard (Tab key). */
 button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Color variations. game.js adds these classes to buttons depending on what they do. */
 button.primary { background: #4a3a18; border-color: var(--gold); color: #fff3c4; }
 button.danger { border-color: #7a3b3b; color: #ffb3aa; }
 button.good { border-color: #3f6b45; color: #bfeac2; }
 button.magic { border-color: #5b4580; color: #dcc6ff; }
 button.gold { border-color: #7a6326; color: #f5d88a; }
 
+/* ---- Text boxes (the name box and the command line) ---- */
 input {
   font: inherit;
   color: var(--text);
@@ -57,48 +128,72 @@ input {
 
 /* ---------- start screen ---------- */
 .screen {
+  /* Never wider than 860px, so lines don't get too long on big monitors. */
   max-width: 860px;
+  /* "0 auto" = no gap above or below, and equal automatic gaps left and right, which centers it. */
   margin: 0 auto;
+  /* Space inside: 24px top, 16px left and right, 48px bottom. */
   padding: 24px 16px 48px;
   text-align: center;
 }
+/* The ASCII-art castle. "inline-block" lets it be centered while its own lines stay left-aligned. */
 .title-art { color: var(--dim); font-size: 13px; line-height: 1.15; margin: 0 auto 8px; display: inline-block; text-align: left; }
 .game-title {
+  /* clamp(smallest, preferred, largest): the title grows with the window (6% of its width) but stays between 28px and 46px. */
   font-size: clamp(28px, 6vw, 46px);
+  /* Extra space between letters. */
   letter-spacing: .08em;
   color: var(--gold);
   margin: 4px 0;
+  /* A soft golden glow behind the letters. */
   text-shadow: 0 0 18px rgba(224, 180, 76, .35);
 }
 .tagline { color: var(--dim); margin: 0 0 24px; }
+/* "display: block" puts each label on its own line above its box. */
 #start-form label, #start-form .label { display: block; color: var(--gold); margin: 14px 0 6px; }
+/* min() picks the smaller value: 320px wide, or the full width on a narrow phone. */
 #hero-name { width: min(320px, 100%); text-align: center; }
+/*
+  "display: grid" arranges the class cards in columns. "auto-fit" with
+  minmax(220px, 1fr) means: fit as many columns as possible, each at least
+  220px wide and sharing the leftover space equally ("1fr" = one fraction).
+  On a phone, the cards stack into a single column automatically.
+*/
 #class-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 6px; }
 .class-card { text-align: left; padding: 14px; background: var(--panel); }
 .class-card h3 { margin: 0 0 6px; color: var(--gold); font-size: 18px; }
 .class-card p { margin: 4px 0; font-size: 13px; }
 .class-card .card-stats { color: var(--blue); }
 .class-card .card-perk { color: var(--green); }
+/* The card the player has picked gets a gold border and glow. game.js adds the "selected" class when clicked. */
 .class-card.selected { border-color: var(--gold); background: #2a2214; box-shadow: 0 0 0 1px var(--gold), 0 0 18px rgba(224, 180, 76, .25); }
+/* "display: flex" lines the buttons up in a row. "flex-wrap: wrap" lets them drop to a new line if there's no room. */
 .start-buttons { margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 /* ---------- hall of records ---------- */
+/* The panel on the start screen that shows lifetime stats saved in localStorage. */
 .records {
   margin: 32px auto 0; max-width: 640px; padding: 16px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
 }
 .records h2 { margin: 0 0 12px; font-size: 14px; color: var(--gold); text-transform: uppercase; letter-spacing: .14em; }
 .records-empty { margin: 0; color: var(--dim); font-style: italic; }
+/* The stat tiles: as many columns as fit, each at least 105px wide. */
 .records-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; }
+/* Each tile stacks its label, number and note vertically ("flex-direction: column") and centers them. */
 .records-grid div { background: var(--panel-2); border-radius: 6px; padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .records-grid span { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
 .records-grid b { color: var(--gold); font-size: 20px; }
+/* "overflow-wrap: anywhere" lets a long hero name break onto a new line instead of spilling out of the tile. */
 .records-grid small { color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+/* A button styled to look like a small underlined link (used for "Clear records"). */
 .link-btn { margin-top: 10px; background: none; border: none; color: var(--dim); font-size: 12px; text-decoration: underline; padding: 2px 6px; }
 .link-btn:hover:not(:disabled) { background: none; color: var(--text); }
 
 /* ---------- game layout ---------- */
+/* The game screen fills the window and stacks its parts top to bottom. */
 #app { height: 100%; display: flex; flex-direction: column; }
+/* The top bar: game name on the left, location on the right ("space-between" pushes them apart). */
 .topbar {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 8px 16px; border-bottom: 1px solid var(--border); background: rgba(0, 0, 0, .3);
@@ -106,32 +201,50 @@ input {
 .brand { color: var(--gold); letter-spacing: .1em; font-weight: bold; }
 #location { color: var(--dim); text-align: right; }
 
+/*
+  The two-column layout: the left column takes all the leftover space
+  ("1fr"), and the right column is a fixed 300px. "flex: 1" makes the
+  layout stretch to fill the rest of the window's height.
+*/
 .layout {
   flex: 1; min-height: 0;
   display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px;
   padding: 12px; max-width: 1280px; width: 100%; margin: 0 auto;
 }
 .main-col { display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+/* "overflow-y: auto" adds a scroll bar to the side panels only if they're taller than the screen. */
 .side-col { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; }
 
+/* The picture box. "position: relative" lets the enemy health bar be positioned inside it (see #enemy-panel). */
 .scene-box {
   position: relative;
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
   min-height: 170px; display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
+/* "white-space: pre" keeps every space in the ASCII art, so the drawings don't get squashed. */
 #scene { margin: 8px; font-size: 13px; line-height: 1.15; color: #a99fb8; white-space: pre; }
+/* During a fight the art turns red, shakes once, and leaves room underneath for the enemy's health bar. */
 #scene.enemy { color: var(--red); animation: shake .35s; margin-bottom: 44px; }
+/* "@keyframes" defines an animation: here, a quick move left then right. */
 @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+/* "position: absolute" pins the enemy panel to the bottom of the scene box. */
 #enemy-panel { position: absolute; left: 10px; right: 10px; bottom: 8px; }
 #enemy-name { color: var(--red); font-weight: bold; font-size: 13px; text-shadow: 0 1px 2px #000; }
 
+/* The story log. It grows to fill the free space and scrolls when the text gets long. */
 #output {
   flex: 1; min-height: 160px; overflow-y: auto;
   background: rgba(10, 8, 14, .85); border: 1px solid var(--border); border-radius: 8px;
   padding: 10px 14px;
 }
+/* Each line of story text. "pre-wrap" keeps line breaks but still wraps long lines. New lines fade in. */
 .line { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; animation: fadein .25s; }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+/*
+  Kinds of story text. game.js gives each line one of these classes so you
+  can tell at a glance what happened: room names in gold, damage in red,
+  healing in green, magic in purple, and so on.
+*/
 .spacer { height: 6px; }
 .room-title { color: var(--gold); font-weight: bold; margin-top: 4px; }
 .desc { color: var(--text); }
@@ -153,9 +266,12 @@ input {
 .levelup { color: #fff3c4; font-weight: bold; background: #3a2e12; padding: 4px 8px; border-radius: 4px; }
 .victory { color: var(--green); font-weight: bold; }
 
+/* The command line: the ">" symbol, the text box and the Enter button in one row. */
 #cmd-form { display: flex; gap: 8px; align-items: center; }
 #cmd-form .prompt { color: var(--gold); font-weight: bold; }
+/* "flex: 1" lets the text box stretch to take all the room the other two don't need. */
 #cmd { flex: 1; min-width: 0; }
+/* The quick-action buttons wrap onto extra rows if there are many. */
 #actions { display: flex; flex-wrap: wrap; gap: 6px; }
 #actions button { font-size: 13px; padding: 5px 10px; }
 
@@ -163,44 +279,65 @@ input {
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
 .panel h2 { margin: 0 0 8px; font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: .12em; }
 .panel h2 small { color: var(--dim); text-transform: none; letter-spacing: 0; font-weight: normal; margin-left: 6px; }
+/* Hero name on the left, class and level on the right. */
 .char-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; gap: 8px; }
+/* A very long name gets cut off with "..." ("text-overflow: ellipsis") instead of breaking the layout. */
 #char-name { color: var(--gold); font-weight: bold; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #char-class { color: var(--dim); font-size: 12px; white-space: nowrap; }
 .bar-label { font-size: 11px; color: var(--dim); margin-top: 4px; text-transform: uppercase; letter-spacing: .08em; }
 .poison { color: #9be37a; text-transform: none; margin-left: 6px; }
+/*
+  Health, mana, experience and enemy bars. The outer ".bar" is the dark
+  track. The inner ".fill" is the colored part; game.js sets its width
+  (for example, 40%) and the "transition" makes it slide smoothly.
+*/
 .bar { position: relative; height: 16px; background: #0c0a10; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
 .bar .fill { height: 100%; width: 0; transition: width .3s ease; }
+/* "linear-gradient" blends from one color to another across the bar. */
 .bar.hp .fill { background: linear-gradient(90deg, #8a2f2a, #d0574c); }
+/* When health is low, game.js adds the "low" class and the bar pulses as a warning. */
 .bar.hp .fill.low { animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .55; } }
 .bar.mp .fill { background: linear-gradient(90deg, #2c4a8a, #5a8ee0); }
 .bar.xp .fill { background: linear-gradient(90deg, #5a3f8a, #a07fe0); }
 .bar.enemy .fill { background: linear-gradient(90deg, #6b1f1f, #c43c3c); }
+/* The numbers (like "30 / 42") are laid on top of the bar. "inset: 0" stretches the text box over the whole bar. */
 .bar-text { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 14px; color: #fff; text-shadow: 0 1px 2px #000; }
+/* Gold, Attack and Defense in three equal columns. */
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 6px; text-align: center; }
 .stats div { background: var(--panel-2); border-radius: 6px; padding: 4px; }
 .stats span { display: block; font-size: 10px; color: var(--dim); text-transform: uppercase; }
 .stats b { color: var(--gold); }
 .equip { font-size: 12px; color: var(--text); }
+/* ":first-child" = the first <span> inside, which is the "Weapon:" or "Armor:" label. */
 .equip span:first-child { color: var(--dim); }
 
+/* The map's drawing area and the 3-column compass grid. */
 #map { width: 100%; height: 200px; display: block; background: #0c0a10; border-radius: 6px; border: 1px solid var(--border); }
 #compass { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; }
 #compass button { padding: 6px 4px; font-size: 13px; }
 
+/* Inventory and spell lists. "list-style: none" removes the bullet points. Long lists scroll after 220px. */
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .list button { width: 100%; text-align: left; font-size: 13px; padding: 4px 8px; }
 .list .empty { color: var(--dim); font-size: 13px; font-style: italic; }
+/* Item buttons are color-coded by type: potions and food green, gear gold, magic purple, keys blue. */
 .list button.potion, .list button.food { color: #bfeac2; }
 .list button.weapon, .list button.armor, .list button.amulet { color: #f5d88a; }
 .list button.scroll, .list button.spell, .list button.throw { color: #dcc6ff; }
 .list button.key { color: #9fd3e6; }
 
 /* ---------- modal ---------- */
+/*
+  The pop-up's dark see-through backdrop. "position: fixed" with "inset: 0"
+  covers the whole window. "z-index: 10" puts it on top of everything else
+  (a higher z-index means "closer to the viewer").
+*/
 .overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, .75);
   display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;
 }
+/* The pop-up box itself, centered by the overlay's flex settings. */
 .modal-box {
   background: var(--panel); border: 1px solid var(--gold); border-radius: 10px;
   max-width: 520px; width: 100%; padding: 20px 24px; text-align: center;
@@ -210,6 +347,12 @@ input {
 #modal-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
 
 /* ---------- small screens ---------- */
+/*
+  A "media query": the rules inside only apply when the window is 820px wide
+  or less (phones and small tablets). This is called "responsive design":
+  the side panels drop below the story instead of sitting beside it, and
+  text gets a little smaller.
+*/
 @media (max-width: 820px) {
   body { font-size: 14px; }
   #app { height: auto; min-height: 100%; }

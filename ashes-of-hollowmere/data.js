@@ -1,12 +1,55 @@
 /* Ashes of Hollowmere — game content: art, classes, spells, items, enemies.
    Rooms live in rooms.js. Everything is plain data; the engine is in game.js. */
 'use strict';
+// ============================================================================
+// WHAT THIS FILE IS (a beginner's guide)
+// ============================================================================
+// This is a JavaScript file. JavaScript is the programming language web
+// browsers run to make pages interactive. This file holds no game LOGIC
+// (rules); it is the game's CONTENT, like a big catalogue: pictures, the
+// three hero classes, spells, items and monsters. game.js reads this
+// catalogue to run the game.
+//
+// Lines starting with // are COMMENTS: notes for humans that the computer
+// ignores. Text between /* and */ is also a comment, and can span many lines.
+//
+// A few terms you'll see a lot:
+//   - VARIABLE: a named box that holds a value. "const" makes one whose
+//     contents won't be swapped for something else later.
+//   - STRING: a piece of text, written in quotes: 'like this'.
+//   - NUMBER: e.g. 42. ARRAY: an ordered list in square brackets: [3, 7].
+//   - OBJECT: a group of named values in curly braces, e.g.
+//       { name: 'oak staff', value: 3 }
+//     Each "name: value" pair is called a PROPERTY.
+//   - FUNCTION: a reusable set of instructions that can take inputs and
+//     give back a result.
+// ============================================================================
 
+// 'use strict' (at the top of this file) turns on JavaScript's "strict mode", which
+// makes the browser report common mistakes as errors instead of quietly
+// ignoring them.
+
+// "window" is the browser tab. Saving our catalogue as window.GameData makes
+// it available to the other script files (rooms.js and game.js).
+// The "(function () { ... })()" pattern creates a function and runs it right
+// away. Everything made inside it stays private unless it is "returned" at
+// the bottom of the file. This keeps the catalogue tidy and self-contained.
 window.GameData = (function () {
+  // HELPER FUNCTION "a": cleans up each piece of ASCII art below.
+  // It uses "regular expressions" (patterns for matching text, written
+  // between slashes) to delete the blank line at the start and the end.
   // Strips the leading newline from template-literal art.
   const a = (s) => s.replace(/^\n/, '').replace(/\n\s*$/, '');
 
   // ------------------------------------------------------------------ ART
+  // ASCII ART: pictures drawn with ordinary keyboard characters.
+  // ART is an object: each property name (title, village, tavern, ...) is a
+  // picture's label, and its value is the picture itself as a string.
+  // String.raw`...` is a "template literal" (text between backticks) that
+  // keeps backslashes \ exactly as typed, which ASCII art needs.
+  // (No comments are placed INSIDE the pictures, because anything between
+  // the backticks would show up on screen as part of the drawing.)
+  // The first group is locations; the second group (after "enemies") is monsters.
   const ART = {
     title: a(String.raw`
             /\                          /\
@@ -277,6 +320,8 @@ window.GameData = (function () {
            .     o o
 `),
     // ---- enemies
+    // Monster pictures. Each enemy in ENEMIES (further down) names one of
+    // these with its "art" property. game.js shows it during a fight.
     rat: a(String.raw`
             ____
       (\_/)/    \___
@@ -396,6 +441,22 @@ window.GameData = (function () {
   };
 
   // ------------------------------------------------------------- CLASSES
+  // The three hero types the player can choose on the start screen.
+  // What each property means:
+  //   name / blurb / perk   - text shown on the class card
+  //   hp / mp               - starting health points and mana points
+  //                           (mana is the "fuel" spells use up)
+  //   str                   - strength: added to weapon damage
+  //   def                   - defense: reduces damage taken
+  //   crit                  - chance of a "critical hit" (double damage);
+  //                           0.25 means 25%
+  //   gold                  - starting money
+  //   spellPower            - spell damage multiplier (1.35 = 35% stronger)
+  //   weapon / armor        - starting equipment (IDs from ITEMS below)
+  //   items / spells        - starting inventory and known spells (arrays of IDs)
+  //   levelHp / levelMp / levelStr - how much each stat grows per level gained
+  // An "ID" is a short, unique code name (like 'oak_staff') that the code uses
+  // to refer to something. Players never see IDs.
   const CLASSES = {
     warrior: {
       name: 'Warrior',
@@ -427,6 +488,18 @@ window.GameData = (function () {
   };
 
   // -------------------------------------------------------------- SPELLS
+  // Every spell in the game. Players learn them from scrolls and tomes.
+  //   name  - the name players see
+  //   kw    - "keywords": words the player can type to mean this spell
+  //           (so "cast fire" and "cast fireball" both work)
+  //   mp    - mana cost to cast it
+  //   type  - what it does: 'attack', 'poison', 'heal', 'light' or 'knock';
+  //           game.js has a different set of rules for each type
+  //   dmg   - [lowest, highest] damage; a random number in that range is used
+  //   msg   - the message shown when cast. {e} and {d} are placeholders that
+  //           game.js swaps for the enemy's name and the damage number
+  //   freeze / undead / turns / tick / amount - extra numbers some types use
+  //   desc  - description shown to the player
   const SPELLS = {
     firebolt: { name: 'Firebolt', kw: ['firebolt', 'fire', 'fireball', 'bolt', 'flame'], mp: 6, type: 'attack', dmg: [8, 14],
       msg: 'A bolt of fire roars from your fingertips and engulfs {e} for {d} damage!',
@@ -454,6 +527,20 @@ window.GameData = (function () {
 
   // --------------------------------------------------------------- ITEMS
   // type: weapon | armor | amulet | potion | food | throw | scroll | key | tool | gold | treasure | note
+  // Every item in the game, looked up by its ID.
+  //   name / desc - what the player sees
+  //   kw          - extra words the player can type to mean this item
+  //   type        - the kind of item (listed in the "type:" comment above); it decides
+  //                 what "use" does with it
+  //   value       - price in gold at a shop (shops buy it back for half)
+  //   dmg         - weapons: [lowest, highest] damage
+  //   def / hp / mp / spell / holy - bonuses the item gives while equipped
+  //   heal / mana / cure          - what drinking or eating it restores
+  //   spell (on scrolls)          - the ID of the spell the scroll teaches
+  //   amount (on gold)            - how many coins are inside
+  //   text (on notes)             - what you read when you "read" it
+  //   use                         - a special message shown when it is used
+  // --- Weapons ---
   const ITEMS = {
     rusty_longsword: { name: 'rusty longsword', kw: ['sword', 'longsword', 'rusty', 'blade'], type: 'weapon', dmg: [3, 7], value: 4,
       desc: 'It has seen better centuries. Still pointy at the important end. (3-7 damage)' },
@@ -476,6 +563,7 @@ window.GameData = (function () {
     silver_sword: { name: 'silver sword', kw: ['sword', 'silver'], type: 'weapon', dmg: [7, 12], holy: 1.5, value: 60,
       desc: 'Bright silver, etched with prayers. The undead hate it. (7-12 damage, +50% vs undead)' },
 
+    // --- Armor and amulets (worn for defense and other bonuses) ---
     padded_jerkin: { name: 'padded jerkin', kw: ['jerkin', 'padded'], type: 'armor', def: 1, value: 3,
       desc: 'Quilted cloth. Stops splinters and mild insults. (+1 defense)' },
     apprentice_robes: { name: 'apprentice robes', kw: ['robes', 'robe', 'apprentice'], type: 'armor', def: 1, mp: 5, value: 5,
@@ -489,6 +577,7 @@ window.GameData = (function () {
     wolf_amulet: { name: 'wolf-tooth amulet', kw: ['amulet', 'wolf', 'tooth', 'necklace'], type: 'amulet', def: 1, hp: 10, value: 30,
       desc: "A great fang on a leather cord. You feel tougher just wearing it. (+10 max health, +1 defense)" },
 
+    // --- Potions, food, holy water and tools ---
     healing_potion: { name: 'healing potion', kw: ['potion', 'healing', 'heal', 'red'], type: 'potion', heal: 30, value: 10,
       desc: 'A red potion that tastes of cherries and regret. Restores 30 health.' },
     greater_healing: { name: 'greater healing potion', kw: ['potion', 'greater', 'healing', 'heal', 'big'], type: 'potion', heal: 60, value: 25,
@@ -511,6 +600,7 @@ window.GameData = (function () {
     lockpicks: { name: 'lockpicks', kw: ['lockpicks', 'picks', 'lockpick'], type: 'tool', value: 0,
       desc: "A rogue's best friend. Use 'pick lock' near something locked." },
 
+    // --- Keys: needed to get past locked doors (they can't be sold or dropped) ---
     postern_key: { name: 'rusted postern key', kw: ['key', 'postern', 'rusted', 'rusty'], type: 'key', value: 0,
       desc: "A heavy iron key, crusted with rust and something worse. Its tag reads 'POSTERN'." },
     crown_key: { name: 'crown key', kw: ['key', 'crown', 'golden'], type: 'key', value: 0,
@@ -518,6 +608,7 @@ window.GameData = (function () {
     cell_keys: { name: 'ring of cell keys', kw: ['keys', 'key', 'cell', 'ring'], type: 'key', value: 0,
       desc: "A jailer's ring of keys, each one labelled in a cramped, unpleasant hand." },
 
+    // --- Scrolls and tomes: "read" one to learn its spell (it is used up) ---
     scroll_light: { name: 'scroll of light', kw: ['scroll', 'light'], type: 'scroll', spell: 'light', value: 15,
       desc: "A scroll inscribed with the spell Light. 'read' it to learn the spell." },
     scroll_firebolt: { name: 'scroll of firebolt', kw: ['scroll', 'firebolt', 'fire'], type: 'scroll', spell: 'firebolt', value: 30,
@@ -533,6 +624,7 @@ window.GameData = (function () {
     tome_smite: { name: 'tome of holy smite', kw: ['tome', 'holy', 'smite', 'book', 'prayer'], type: 'scroll', spell: 'smite', value: 30,
       desc: "A prayer book with a golden sun on the cover. 'read' it to learn Holy Smite." },
 
+    // --- Gold, treasure to sell, and notes with clues ---
     coin_purse: { name: "hunter's coin purse", kw: ['purse', 'coin', 'coins', 'hunters', 'pouch'], type: 'gold', amount: 14,
       desc: 'A small leather purse. It clinks.' },
     wolf_pelt: { name: 'wolf pelt', kw: ['pelt', 'fur', 'wolf', 'skin'], type: 'treasure', value: 12,
@@ -552,6 +644,23 @@ window.GameData = (function () {
   };
 
   // ------------------------------------------------------------- ENEMIES
+  // Every monster, looked up by its ID.
+  //   name / kw     - display name, and words the player can type to target it
+  //   proper: true  - it's a named character, so messages say "Grumbold"
+  //                   rather than "the Grumbold"
+  //   hp            - health points (damage needed to defeat it)
+  //   dmg           - [lowest, highest] damage it deals per hit
+  //   def           - armor that reduces the player's weapon damage
+  //   xp            - experience points the player earns for winning
+  //   gold          - [lowest, highest] coins it drops
+  //   art           - which picture from ART to show
+  //   aggressive    - true = attacks as soon as you enter the room;
+  //                   false = waits (like the troll, who wants a toll first)
+  //   undead        - true = holy water, Holy Smite and the silver sword hurt it more
+  //   drops         - items it may leave behind; chance 1 = always, 0.4 = 40%
+  //   poison / drain / special - special powers that game.js checks for
+  //   intro / hits / death     - text shown when the fight starts, when it
+  //                              hits you ({d} becomes the damage), and when it dies
   const ENEMIES = {
     rat: { name: 'giant rat', kw: ['rat', 'giant'], hp: 10, dmg: [1, 4], def: 0, xp: 6, gold: [0, 2], art: 'rat', aggressive: true,
       intro: 'A giant rat the size of a sheepdog lunges at you, squeaking with what can only be called malice!',
@@ -601,11 +710,16 @@ window.GameData = (function () {
     bone_golem: { name: 'bone golem', kw: ['golem', 'bone', 'bones'], hp: 75, dmg: [7, 13], def: 5, xp: 75, gold: [0, 0], art: 'golem', aggressive: true, undead: true,
       intro: 'The piles of bones rattle, rise and lock together into a hulking golem. It steps between you and the black jar.',
       hits: ['The bone golem crushes you with a fist made of femurs ({d} damage).', 'The golem flings a skull at you ({d} damage). Rude.'] },
+    // The final boss. special: 'lich' tells game.js to use his unique rules:
+    // a powerful spell every third turn, and coming back to life until his
+    // phylactery (the jar holding his soul, in the Bone Pit) is smashed.
     lich: { name: 'Varkhul, the Hollow King', proper: true, kw: ['lich', 'varkhul', 'king', 'hollow'], hp: 150, dmg: [10, 16], def: 4, xp: 250, gold: [0, 0], art: 'lich', aggressive: true, undead: true, special: 'lich',
       intro: "'A visitor! How long since anyone came down here who wasn't already dead. Don't worry,' says the Hollow King, raising a skeletal hand. 'That's easily arranged.'",
       hits: ['Varkhul lashes you with a whip of shadow ({d} damage).', "Varkhul's cold hand closes on your shoulder and steals your warmth ({d} damage)."],
       death: 'Varkhul shrieks as his crown clatters to the floor. His body crumbles into ash, his robes into dust, and with no jar to call him home, he does not come back. The green runes flicker and go dark.' },
   };
 
+  // Hand the finished catalogue back so it is stored in window.GameData.
+  // ROOMS starts as an empty object {}; rooms.js fills it in next.
   return { ART, CLASSES, SPELLS, ITEMS, ENEMIES, ROOMS: {} };
 })();

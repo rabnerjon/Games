@@ -1,37 +1,102 @@
 <!DOCTYPE html>
+<!--
+  ==========================================================================
+  ASHES OF HOLLOWMERE — index.html
+  ==========================================================================
+  This is the "HTML" file. HTML (HyperText Markup Language) describes the
+  STRUCTURE of a web page: what boxes, buttons, headings and text exist and
+  how they are nested inside each other. It does NOT say what things look
+  like (that is the job of style.css) or how they behave (that is the job of
+  the JavaScript files: data.js, rooms.js and game.js).
+
+  HTML is made of "tags" written in angle brackets, like <p> ... </p>.
+  A tag plus everything between its opening and closing parts is called an
+  "element". Extra settings written inside a tag, like id="start", are called
+  "attributes".
+
+  Text written between <!- - and - -> (without the spaces) is a COMMENT, like
+  this one. The browser ignores comments completely. They are notes for humans.
+
+  The very first line, <!DOCTYPE html>, tells the browser "this is a modern
+  HTML page", so it uses today's rules to display it.
+  ==========================================================================
+-->
+<!-- <html> wraps the whole page. lang="en" tells browsers and screen readers the page is in English. -->
 <html lang="en">
+<!--
+  <head> holds information ABOUT the page (settings, title, links to other
+  files). Nothing in the head is shown in the page itself.
+-->
 <head>
+  <!-- "charset" = character set. UTF-8 lets the page show any letter or symbol, such as — or ▲. -->
   <meta charset="utf-8">
+  <!-- Makes the page fit the screen width on phones instead of showing a zoomed-out desktop page. -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    SECURITY: the Content Security Policy (CSP) is a list of rules the browser
+    enforces. It says this page may only load scripts, styles and images from
+    its own website ('self'), and nothing from anywhere else. If an attacker
+    ever managed to sneak code into the page, the browser would refuse to run it.
+  -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <!-- SECURITY/PRIVACY: if anyone clicks a link away from this page, don't tell the other site where they came from. -->
   <meta name="referrer" content="no-referrer">
+  <!-- A short summary that search engines (like Google) may show under the link. -->
   <meta name="description" content="Ashes of Hollowmere — a text adventure with combat and magic. Explore a cursed castle, fight the undead, and defeat the Hollow King.">
+  <!-- The text shown on the browser tab. -->
   <title>Ashes of Hollowmere — A Text Adventure</title>
+  <!-- The "favicon" is the tiny tab icon. "data:," means "an empty icon", which stops the browser asking the server for one. -->
   <link rel="icon" href="data:,">
+  <!-- Loads the separate CSS file (style.css), which controls colors, fonts, sizes and layout. -->
   <link rel="stylesheet" href="style.css">
 </head>
+<!-- <body> holds everything the player actually sees. -->
 <body>
 
   <!-- ============ START SCREEN ============ -->
+  <!--
+    The first thing a player sees: title, name box, class choice and the Hall
+    of Records. The "hidden" attribute hides it until JavaScript (game.js)
+    has finished setting things up and decides to show it.
+    id="start" gives this element a unique name so CSS and JavaScript can find it.
+    class="screen" puts it in a group that shares the same styling.
+  -->
   <section id="start" class="screen" hidden>
+    <!-- <pre> ("preformatted") keeps spaces and line breaks exactly as written. game.js fills it with the ASCII-art castle. aria-hidden tells screen readers to skip the picture. -->
     <pre id="start-art" class="title-art" aria-hidden="true"></pre>
+    <!-- <h1> is the main heading of the page. -->
     <h1 class="game-title">Ashes of Hollowmere</h1>
+    <!-- <p> is a paragraph of text. -->
     <p class="tagline">A text adventure of steel, sorcery, and a king who refuses to stay dead.</p>
+    <!-- A <form> groups inputs and a submit button. autocomplete="off" stops the browser suggesting old entries. -->
     <form id="start-form" autocomplete="off">
+      <!-- A <label> describes an input. for="hero-name" links it to the input with id="hero-name", so clicking the label focuses the box. -->
       <label for="hero-name">Your name</label>
+      <!-- A text box. maxlength="20" limits the name to 20 characters. "placeholder" is the grey hint text shown while it is empty. -->
       <input id="hero-name" maxlength="20" placeholder="Wanderer" spellcheck="false">
       <p class="label">Choose your class</p>
+      <!-- An empty box. game.js creates the Warrior, Mage and Rogue cards and puts them in here. -->
       <div id="class-cards"></div>
       <div class="start-buttons">
+        <!-- type="submit" means clicking it "submits" the form, which game.js listens for to start the game. It starts "disabled" (unclickable) until a class is chosen. -->
         <button id="begin-btn" type="submit" class="primary" disabled>Begin your adventure</button>
+        <!-- Only shown (by game.js) when a saved game exists in localStorage. -->
         <button id="continue-btn" type="button" hidden>Continue saved game</button>
       </div>
     </form>
 
     <!-- Hall of Records: lifetime stats saved in localStorage -->
+    <!--
+      "localStorage" is a small storage space inside the visitor's own browser.
+      Data saved there stays after a refresh or after closing the browser.
+      game.js reads the saved stats and writes the numbers into the <b> tags below.
+      aria-labelledby tells screen readers to use the heading below as this section's name.
+    -->
     <section id="records" class="records" aria-labelledby="records-title">
       <h2 id="records-title">Hall of Records</h2>
+      <!-- Shown when nothing has been recorded yet. -->
       <p id="records-empty" class="records-empty">No legends yet. Yours could be the first.</p>
+      <!-- The grid of stats. Hidden until there is at least one record. Each <div> is one stat tile: a label (<span>), a big number (<b>, bold) and sometimes small text (<small>). -->
       <div id="records-grid" class="records-grid" hidden>
         <div><span>Adventures begun</span><b id="rec-started"></b></div>
         <div><span>Victories</span><b id="rec-wins"></b></div>
@@ -39,36 +104,52 @@
         <div><span>Highest level</span><b id="rec-level"></b><small id="rec-level-who"></small></div>
         <div><span>Fastest victory</span><b id="rec-moves"></b><small>moves</small></div>
       </div>
+      <!-- Lets the player wipe their stats. game.js asks "are you sure?" first. -->
       <button id="clear-records-btn" type="button" class="link-btn" hidden>Clear records</button>
     </section>
   </section>
 
   <!-- ============ GAME ============ -->
+  <!-- The main game screen. It stays hidden until the player starts or continues a game. -->
   <div id="app" hidden>
+    <!-- The thin bar across the top: the game name on the left, the current location on the right. -->
     <header class="topbar">
       <span class="brand">Ashes of Hollowmere</span>
+      <!-- game.js writes the current room's name in here. -->
       <span id="location"></span>
     </header>
 
+    <!-- <main> holds the main content. CSS splits it into two columns: the story on the left and the side panels on the right. -->
     <main class="layout">
+      <!-- LEFT COLUMN: picture, story text, command box and quick-action buttons. -->
       <section class="main-col">
+        <!-- The "scene" box at the top shows ASCII art of the current place or enemy. -->
         <div class="scene-box">
           <pre id="scene" aria-hidden="true"></pre>
+          <!-- Only shown during a fight: the enemy's name and health bar. -->
           <div id="enemy-panel" hidden>
             <div id="enemy-name"></div>
+            <!-- A health bar is two boxes: an outer "track" and an inner "fill" whose width game.js changes (e.g. 50% wide = half health). The <span> shows the numbers. -->
             <div class="bar enemy"><div id="enemy-fill" class="fill"></div><span id="enemy-text" class="bar-text"></span></div>
           </div>
         </div>
+        <!-- The story log, where all game text appears. role="log" and aria-live="polite" make screen readers read new lines aloud as they are added. -->
         <div id="output" role="log" aria-live="polite"></div>
+        <!-- The command line where the player types things like "go north". -->
         <form id="cmd-form" autocomplete="off">
+          <!-- "&gt;" is the HTML code for the > symbol (written this way because < and > have special meaning in HTML). -->
           <span class="prompt" aria-hidden="true">&gt;</span>
+          <!-- maxlength="120" caps commands at 120 characters. aria-label gives screen readers a name for the box. -->
           <input id="cmd" maxlength="120" spellcheck="false" autocomplete="off" aria-label="Type a command" placeholder="What do you do?">
           <button type="submit">Enter</button>
         </form>
+        <!-- game.js fills this with buttons that change with the situation (Attack, Talk, Shop...). -->
         <div id="actions" aria-label="Quick actions"></div>
       </section>
 
+      <!-- RIGHT COLUMN: <aside> means "related side content". It holds the character sheet, map, inventory and spells. -->
       <aside class="side-col">
+        <!-- Character sheet: name, class, health/mana/experience bars, stats and equipment. -->
         <div class="panel">
           <div class="char-head"><span id="char-name"></span><span id="char-class"></span></div>
           <div class="bar-label">Health <span id="poison-tag" class="poison" hidden>poisoned</span></div>
@@ -86,9 +167,17 @@
           <div class="equip"><span>Armor:</span> <span id="eq-armor"></span></div>
         </div>
 
+        <!-- Map and movement buttons. -->
         <div class="panel">
           <h2>Map <small id="map-label"></small></h2>
+          <!-- A <canvas> is a blank drawing surface. game.js draws the map on it with code. -->
           <canvas id="map" aria-label="Map of explored areas"></canvas>
+          <!--
+            The compass: a 3×3 grid of buttons (CSS arranges them).
+            "data-dir" and "data-cmd" are custom attributes (anything starting with
+            data- is allowed). game.js reads them to know which command a button sends.
+            The empty <span>s fill the unused corners of the grid.
+          -->
           <div id="compass">
             <button type="button" data-dir="u" title="Up">▲ Up</button>
             <button type="button" data-dir="n" title="North">N</button>
@@ -102,11 +191,13 @@
           </div>
         </div>
 
+        <!-- Inventory. <ul> is an "unordered list". game.js adds one item button per thing you carry. -->
         <div class="panel">
           <h2>Inventory</h2>
           <ul id="inv-list" class="list"></ul>
         </div>
 
+        <!-- Known spells. game.js adds one button per spell. -->
         <div class="panel">
           <h2>Spells</h2>
           <ul id="spell-list" class="list"></ul>
@@ -116,6 +207,12 @@
   </div>
 
   <!-- ============ MODAL ============ -->
+  <!--
+    A "modal" is a pop-up box that sits on top of everything and must be
+    answered before you continue (used for "You Have Died", "Victory!" and
+    "Are you sure?"). game.js fills in the title, text and buttons.
+    role="dialog" and aria-modal tell screen readers it is a pop-up.
+  -->
   <div id="modal" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-box">
       <h2 id="modal-title"></h2>
@@ -124,6 +221,14 @@
     </div>
   </div>
 
+  <!--
+    SCRIPTS: these load the three separate JavaScript files. JavaScript is the
+    programming language that makes the page interactive. Order matters:
+      1. data.js  - the game's content: art, classes, spells, items, enemies
+      2. rooms.js - the world map, characters and puzzles (it adds to data.js)
+      3. game.js  - the "engine" that runs everything using the two files above
+    They sit at the bottom of the body so the HTML above already exists when they run.
+  -->
   <script src="data.js"></script>
   <script src="rooms.js"></script>
   <script src="game.js"></script>
