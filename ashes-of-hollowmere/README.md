@@ -16,6 +16,8 @@ their graves every night. Choose to play as a Warrior, Mage or Rogue and put a s
 - 28 locations to explore, with puzzles that have more than one solution
 - ASCII art, health and mana bars, and a map that fills in as you explore
 - Saves automatically in your browser
+- **Hall of Records** on the start screen: lifetime stats (adventures begun, victories, deaths,
+  highest level, fastest victory) kept in `localStorage`, so they survive refreshing or closing the browser
 
 ## Running it locally
 

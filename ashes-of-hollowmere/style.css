@@ -82,6 +82,21 @@ input {
 .class-card.selected { border-color: var(--gold); background: #2a2214; box-shadow: 0 0 0 1px var(--gold), 0 0 18px rgba(224, 180, 76, .25); }
 .start-buttons { margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
+/* ---------- hall of records ---------- */
+.records {
+  margin: 32px auto 0; max-width: 640px; padding: 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.records h2 { margin: 0 0 12px; font-size: 14px; color: var(--gold); text-transform: uppercase; letter-spacing: .14em; }
+.records-empty { margin: 0; color: var(--dim); font-style: italic; }
+.records-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; }
+.records-grid div { background: var(--panel-2); border-radius: 6px; padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.records-grid span { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+.records-grid b { color: var(--gold); font-size: 20px; }
+.records-grid small { color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+.link-btn { margin-top: 10px; background: none; border: none; color: var(--dim); font-size: 12px; text-decoration: underline; padding: 2px 6px; }
+.link-btn:hover:not(:disabled) { background: none; color: var(--text); }
+
 /* ---------- game layout ---------- */
 #app { height: 100%; display: flex; flex-direction: column; }
 .topbar {

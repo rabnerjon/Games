@@ -39,3 +39,11 @@ player's browser.
 
 1. `game.js`: save loader rejects keys such as `__proto__` and `constructor`.
 2. `game.js`: refuses to run inside a frame on another site (clickjacking defence).
+
+## Update — Hall of Records (November 11, 2026)
+
+A second `localStorage` entry (`ashesOfHollowmere.records.v1`) now stores lifetime stats.
+It gets the same treatment as saves: it is read inside `try/catch`, only known fields are kept,
+numbers must be whole and in range, the hero name is stripped to letters, digits and spaces,
+and everything is displayed with `textContent`. Tested with broken JSON, negative and text
+values, and an `<img onerror>` name: bad values were discarded and no script ran.

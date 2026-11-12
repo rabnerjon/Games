@@ -27,6 +27,20 @@
         <button id="continue-btn" type="button" hidden>Continue saved game</button>
       </div>
     </form>
+
+    <!-- Hall of Records: lifetime stats saved in localStorage -->
+    <section id="records" class="records" aria-labelledby="records-title">
+      <h2 id="records-title">Hall of Records</h2>
+      <p id="records-empty" class="records-empty">No legends yet. Yours could be the first.</p>
+      <div id="records-grid" class="records-grid" hidden>
+        <div><span>Adventures begun</span><b id="rec-started"></b></div>
+        <div><span>Victories</span><b id="rec-wins"></b></div>
+        <div><span>Deaths</span><b id="rec-deaths"></b></div>
+        <div><span>Highest level</span><b id="rec-level"></b><small id="rec-level-who"></small></div>
+        <div><span>Fastest victory</span><b id="rec-moves"></b><small>moves</small></div>
+      </div>
+      <button id="clear-records-btn" type="button" class="link-btn" hidden>Clear records</button>
+    </section>
   </section>
 
   <!-- ============ GAME ============ -->

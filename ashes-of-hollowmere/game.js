@@ -6,6 +6,7 @@
 
   const D = window.GameData;
   const SAVE_KEY = 'ashesOfHollowmere.save.v1';
+  const RECORDS_KEY = 'ashesOfHollowmere.records.v1';
   const SAVE_VERSION = 1;
   const MAX_LINES = 400;
   const MAX_INPUT = 120;
@@ -390,12 +391,56 @@
       S.hp = maxHp();
       S.mp = maxMp();
       print('*** LEVEL UP! You are now level ' + S.level + '. You feel stronger, and fully restored. ***', 'levelup');
+      noteLevel();
     }
+  }
+
+  // ======================================================= HALL OF RECORDS
+  // Lifetime stats kept in localStorage, separate from the saved game, so they
+  // survive refreshes, closing the browser, deaths and new games.
+  function emptyRecords() {
+    return { started: 0, deaths: 0, wins: 0, bestLevel: 0, bestHero: '', fewestMoves: 0 };
+  }
+  // Like the save loader, never trust stored data: keep only known fields with sane values.
+  function readRecords() {
+    const r = emptyRecords();
+    let o;
+    try { o = JSON.parse(localStorage.getItem(RECORDS_KEY) || 'null'); } catch (e) { return r; }
+    if (!o || typeof o !== 'object') return r;
+    const int = (n) => Number.isInteger(n) && n >= 0 && n <= 1e9;
+    for (const k of ['started', 'deaths', 'wins', 'bestLevel', 'fewestMoves']) if (int(o[k])) r[k] = o[k];
+    if (typeof o.bestHero === 'string') r.bestHero = o.bestHero.replace(/[^\p{L}\p{N} '\-]/gu, '').slice(0, 40);
+    if (!r.bestLevel) r.bestHero = '';
+    return r;
+  }
+  function updateRecords(change) {
+    const r = readRecords();
+    change(r);
+    try { localStorage.setItem(RECORDS_KEY, JSON.stringify(r)); } catch (e) { /* storage full or blocked */ }
+    return r;
+  }
+  function noteLevel() {
+    updateRecords((r) => {
+      if (S.level > r.bestLevel) { r.bestLevel = S.level; r.bestHero = S.name + ' the ' + D.CLASSES[S.cls].name; }
+    });
+  }
+  function renderRecords() {
+    const r = readRecords();
+    $('records-empty').hidden = r.started > 0;
+    $('records-grid').hidden = r.started === 0;
+    $('clear-records-btn').hidden = r.started === 0;
+    $('rec-started').textContent = r.started;
+    $('rec-wins').textContent = r.wins;
+    $('rec-deaths').textContent = r.deaths;
+    $('rec-level').textContent = r.bestLevel || '—';
+    $('rec-level-who').textContent = r.bestHero;
+    $('rec-moves').textContent = r.fewestMoves || '—';
   }
 
   function die() {
     S.hp = 0;
     C = null;
+    updateRecords((r) => { r.deaths++; });
     print('You have died.', 'danger');
     const quips = [
       'Your adventure ends here, in a manner the bards will describe as "brief".',
@@ -415,6 +460,10 @@
     print('The curse of Castle Duskholm is broken.', 'victory');
     print('Dawn breaks over the ridge for the first time in twenty years, and in the village below, somebody starts ringing the chapel bell. You climb back into the light.', 'desc');
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+    updateRecords((r) => {
+      r.wins++;
+      if (!r.fewestMoves || S.moves < r.fewestMoves) r.fewestMoves = S.moves;
+    });
     showModal('Victory!', [
       'Varkhul, the Hollow King, is truly dead. Hollowmere is free — and you have been awarded three chickens, as promised.',
       S.name + ' the ' + D.CLASSES[S.cls].name + ' — Level ' + S.level + ' · ' + S.kills + ' foes defeated · ' + S.moves + ' moves · about ' + mins + ' minute' + (mins === 1 ? '' : 's') + '.',
@@ -1085,6 +1134,7 @@
     $('app').hidden = true;
     $('start').hidden = false;
     $('continue-btn').hidden = !readSave();
+    renderRecords();
     $('start-art').textContent = D.ART.title;
     chosenClass = null;
     document.querySelectorAll('.class-card').forEach((b) => b.classList.remove('selected'));
@@ -1099,6 +1149,8 @@
     $('output').replaceChildren();
     if (isNew) {
       S.hp = maxHp(); S.mp = maxMp();
+      updateRecords((r) => { r.started++; });
+      noteLevel();
       print('ASHES OF HOLLOWMERE', 'room-title');
       print('For twenty years, Castle Duskholm has brooded on the ridge above the village of Hollowmere. Its king, Varkhul, wanted to live forever. He managed it — technically — as the Hollow King, a lich whose curse drags the dead out of their graves every night.', 'desc');
       print('You are ' + S.name + ' the ' + D.CLASSES[S.cls].name + '. You arrived in Hollowmere this morning looking for work. The villagers took one look at you and decided that you were the work.', 'desc');
@@ -1169,6 +1221,12 @@
       beginGame(newState(cleanName($('hero-name').value), chosenClass), true);
     });
     $('continue-btn').addEventListener('click', loadGame);
+    $('clear-records-btn').addEventListener('click', () => {
+      showModal('Clear the Hall of Records?', ['Your lifetime stats will be wiped. Your saved game will not be affected.'], [
+        { label: 'Yes, clear them', action: () => { hideModal(); try { localStorage.removeItem(RECORDS_KEY); } catch (e) { /* ignore */ } renderRecords(); } },
+        { label: 'Cancel', action: hideModal },
+      ]);
+    });
 
     // Command line
     $('cmd-form').addEventListener('submit', (ev) => {
