@@ -713,7 +713,7 @@ window.GameData = (function () {
     // The final boss. special: 'lich' tells game.js to use his unique rules:
     // a powerful spell every third turn, and coming back to life until his
     // phylactery (the jar holding his soul, in the Bone Pit) is smashed.
-    lich: { name: 'Varkhul, the Hollow King', proper: true, kw: ['lich', 'varkhul', 'king', 'hollow'], hp: 150, dmg: [10, 16], def: 4, xp: 250, gold: [0, 0], art: 'lich', aggressive: true, undead: true, special: 'lich',
+    lich: { name: 'Varkhul, the Hollow King', proper: true, kw: ['lich', 'varkhul', 'king', 'hollow'], hp: 150, dmg: [10, 16], def: 8, xp: 250, gold: [0, 0], art: 'lich', aggressive: true, undead: true, special: 'lich',
       intro: "'A visitor! How long since anyone came down here who wasn't already dead. Don't worry,' says the Hollow King, raising a skeletal hand. 'That's easily arranged.'",
       hits: ['Varkhul lashes you with a whip of shadow ({d} damage).', "Varkhul's cold hand closes on your shoulder and steals your warmth ({d} damage)."],
       death: 'Varkhul shrieks as his crown clatters to the floor. His body crumbles into ash, his robes into dust, and with no jar to call him home, he does not come back. The green runes flicker and go dark.' },
