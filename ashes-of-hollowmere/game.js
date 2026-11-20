@@ -62,7 +62,7 @@
   // The reverse: turns a short code back into a full word to show the player.
   const DIR_NAMES = { n: 'north', s: 'south', e: 'east', w: 'west', u: 'up', d: 'down' };
   // Labels shown above the map for each height level (the z number in rooms.js).
-  const LEVEL_NAMES = { 2: 'Tower Roof', 1: 'Tower Study', 0: 'Hollowmere & Duskholm', '-1': 'The Dungeons' };
+  const LEVEL_NAMES = { 2: 'Tower Roof', 1: 'Tower Study', 0: 'Hollowmere & Duskholm', '-1': 'The Dungeons', '-2': 'Beneath the Mere' };
   // "Filler" words the parser ignores, so "take the sword" means the same as
   // "take sword". A Set is a list where each word appears only once and can
   // be checked very quickly.
@@ -113,6 +113,12 @@
   addVerbs('wait', ['wait', 'z']);
   addVerbs('go', ['go', 'walk', 'travel', 'head', 'enter', 'climb', 'descend', 'ascend']);
   addVerbs('map', ['map']);
+  addVerbs('journal', ['journal', 'j', 'quests', 'quest', 'log', 'tasks']);
+  addVerbs('recipes', ['recipes', 'recipe', 'cookbook']);
+  addVerbs('craft', ['craft', 'brew', 'mix', 'make', 'cook', 'combine', 'distill']);
+  // Extra words that content files (like mere.js) ask for, e.g. { ring: ['ring', 'toll'] }.
+  // They never replace a word the game already knows.
+  for (const [canon, words] of Object.entries(D.EXTRA_VERBS || {})) words.forEach((w) => { if (!VERB_MAP[w]) VERB_MAP[w] = canon; });
   addVerbs('fun', ['jump', 'sing', 'dance', 'xyzzy', 'plugh', 'hello', 'hi', 'cry', 'scream', 'laugh', 'shout', 'yell', 'swim', 'think']);
 
   // Two-word commands that mean something different from their first word
@@ -245,7 +251,55 @@
     healFull: () => { S.hp = maxHp(); S.mp = maxMp(); S.poison = 0; },
     healHp: () => { S.hp = maxHp(); S.poison = 0; },
     save: () => autosave(),
+    // ---- Extra tools added for the expansion ----
+    // Walk the player straight into another room (a ferry ride, a fall, a current).
+    moveTo: (id) => { if (own(D.ROOMS, id)) enterRoom(id); },
+    // Start a fight with a monster that doesn't live in this room (it won't stay afterwards).
+    fight: (id) => { if (own(D.ENEMIES, id) && !C) startCombat(id, true); },
+    // Make a monster live in the current room (it stays until defeated).
+    placeEnemy: (id) => { if (own(D.ENEMIES, id)) S.enemies[S.room] = id; },
+    // Put an item on the floor of a room (the current room if none is given).
+    placeItem: (id, roomId) => { if (own(D.ITEMS, id)) S.items[roomId || S.room].push(id); },
+    // Hurt the player outside combat. Never kills: it stops at 1 health.
+    hurt: (n) => { S.hp = Math.max(1, S.hp - n); },
+    // How many of an item the player carries (not counting what they wear).
+    count: (id) => S.inv.filter((x) => x === id).length,
+    // Which room the player is in.
+    here: () => S.room,
+    // Quests: move a quest forward to a stage (never backward), or read its stage (0 = not started).
+    quest: (id, stage) => advanceQuest(id, stage),
+    questStage: (id) => questStage(id),
+    // Recipes: teach one (returns false if already known), or check if it's known.
+    learnRecipe: (id) => learnRecipe(id),
+    knowsRecipe: (id) => S.recipes.includes(id),
   };
+
+  // ================================================================ QUESTS
+  // A quest's current stage: 0 = not started. The main quest works its
+  // stage out from puzzle flags instead of storing it.
+  function questStage(id) {
+    const q = D.QUESTS[id];
+    if (!q) return 0;
+    if (q.derive) return q.derive((f) => !!S.flags[f]);
+    return S.quests[id] || 0;
+  }
+  // Moves a quest forward and announces it in the story log.
+  function advanceQuest(id, stage) {
+    const q = D.QUESTS[id];
+    if (!q || q.derive || !Number.isInteger(stage) || stage < 1 || stage > q.done) return;
+    if (questStage(id) >= stage) return;
+    const isNew = !S.quests[id];
+    S.quests[id] = stage;
+    if (stage >= q.done) print('Quest complete: ' + q.name + '. ' + q.doneText, 'levelup');
+    else print((isNew ? 'New quest: ' : 'Journal updated: ') + q.name + ' — ' + q.stages[stage], 'quest');
+  }
+  // Learns a recipe. Returns true if it was new.
+  function learnRecipe(id) {
+    if (!own(D.RECIPES, id) || S.recipes.includes(id)) return false;
+    S.recipes.push(id);
+    print('You learned a recipe: ' + D.RECIPES[id].name + ". (Type 'recipes' to see what you can make.)", 'magic');
+    return true;
+  }
 
   // ================================================================= STATE
   // Builds a brand-new adventure for a hero with the given name and class:
@@ -260,6 +314,8 @@
       inv: c.items.slice(), spells: c.spells.slice(), poison: 0,
       room: 'square', prev: 'square', visited: { square: true },
       flags: {}, items: {}, enemies: {}, talk: {}, moves: 0, kills: 0, started: Date.now(),
+      // Expansion: quest stages ({ bell: 2 }) and the recipes you have learned.
+      quests: {}, recipes: [],
     };
     for (const [id, r] of Object.entries(D.ROOMS)) {
       s.items[id] = (r.items || []).slice();
@@ -332,12 +388,27 @@
     s.flags = {};
     for (const k of Object.keys(o.flags)) if (safeKey(k, /^[a-z0-9_]{1,40}$/) && typeof o.flags[k] === 'boolean') s.flags[k] = o.flags[k];
     for (const id of Object.keys(D.ROOMS)) {
+      // A room the save has never heard of was added to the game after the save
+      // was made (an expansion). Keep its fresh items and monster from newState.
+      if (!own(o.items, id)) continue;
       const list = o.items[id];
       s.items[id] = Array.isArray(list) && list.length < 100 && list.every((x) => isId(D.ITEMS, x)) ? list.slice() : [];
       if (own(o.enemies, id) && isId(D.ENEMIES, o.enemies[id])) s.enemies[id] = o.enemies[id];
       else delete s.enemies[id];
     }
     for (const k of Object.keys(o.talk)) if (safeKey(k, /^[a-z]{1,20}$/) && int(o.talk[k], 0, 1e6)) s.talk[k] = o.talk[k];
+    // Expansion fields. Saves from before the expansion don't have them, so a
+    // missing field just means "nothing yet". Unknown or out-of-range entries
+    // are skipped rather than rejecting the whole save.
+    const Q = D.QUESTS || {};
+    if (o.quests && typeof o.quests === 'object' && !Array.isArray(o.quests)) {
+      for (const k of Object.keys(o.quests)) {
+        if (own(Q, k) && !Q[k].derive && int(o.quests[k], 1, Q[k].done)) s.quests[k] = o.quests[k];
+      }
+    }
+    if (Array.isArray(o.recipes) && o.recipes.length <= 50) {
+      s.recipes = [...new Set(o.recipes.filter((id) => isId(D.RECIPES || {}, id)))];
+    }
     s.hp = Math.min(s.hp, s.baseHp + 100);
     return s;
   }
@@ -378,7 +449,8 @@
     if (!ex[dir]) { print(pick(["You can't go that way.", 'A wall disagrees with you.', 'There is no path ' + DIR_NAMES[dir] + '. You check twice. Still no.']), 'sys'); return; }
     if (!isLit() && S.prev !== ex[dir] && chance(0.5)) {
       S.hp = Math.max(1, S.hp - 2);
-      print('You stumble around in the dark and walk face-first into a shelf. (-2 health) Maybe find a light.', 'dmg');
+      // A room can describe its own stumble ("stumble"); the default fits indoor rooms.
+      print(room().stumble || 'You stumble around in the dark and walk face-first into a shelf. (-2 health) Maybe find a light.', 'dmg');
       return;
     }
     const r = room();
@@ -463,13 +535,9 @@
   // Returns true if combat is over.
   function enemyDefeated() {
     const e = C.e;
-    if (e.special === 'lich' && !S.flags.phylactery_destroyed) {
-      C.revives++;
-      C.hp = C.max;
-      print('Varkhul collapses into a heap of bones... which immediately drag themselves back together. Green fire floods his eyes. "Did you think it would be that easy? I am ETERNAL."', 'danger');
-      if (C.revives >= 2) print('(Something far below is keeping him alive. Maybe you should find it before you try this again. You can always flee.)', 'sys');
-      return false;
-    }
+    const sp = SPECIALS[e.special];
+    // A boss can refuse to die (the lich reviving). Then the fight goes on.
+    if (sp && sp.cheatDeath && sp.cheatDeath()) return false;
     print(e.death || C.The + ' falls and does not get up.', 'victory');
     const gold = e.gold ? rand(e.gold[0], e.gold[1]) : 0;
     if (gold > 0) { S.gold += gold; print('You find ' + gold + ' gold.', 'loot'); }
@@ -478,14 +546,74 @@
     }
     if (!C.temp) delete S.enemies[S.room];
     S.kills++;
-    const wasLich = e.special === 'lich';
     const xp = e.xp;
     C = null;
     gainXp(xp);
-    if (wasLich) { S.flags.lich_dead = true; win(); return true; }
+    // A boss may do something once it is truly dead (the lich's death wins the game).
+    if (sp && sp.defeated && sp.defeated()) return true;
     autosave();
     return true;
   }
+
+  // SPECIALS: bosses with their own unusual rules. An enemy in data.js names
+  // one with "special: 'lich'". Each entry can have up to three functions:
+  //   cheatDeath(): runs when the boss hits 0 health. Return true to keep fighting.
+  //   attack():     runs on the boss's turn. Return a damage number to use a
+  //                 special move instead of a normal hit, or null for a normal hit.
+  //   defeated():   runs once the boss is truly dead. Return true if it ended
+  //                 the game (so we don't autosave afterwards).
+  const SPECIALS = {
+    // Varkhul, the Hollow King.
+    lich: {
+      cheatDeath() {
+        if (S.flags.phylactery_destroyed) return false;
+        // The Tear of the Mere (from the expansion) breaks his hold on undeath.
+        if (S.amulet === 'mere_tear') {
+          print('Varkhul\'s bones begin to drag themselves back together, then the Tear of the Mere at your throat flares cold and blue. "Elspeth?" he whispers, as if he has seen a ghost. Then he crumbles, and stays crumbled.', 'magic');
+          return false;
+        }
+        C.revives++;
+        C.hp = C.max;
+        print('Varkhul collapses into a heap of bones... which immediately drag themselves back together. Green fire floods his eyes. "Did you think it would be that easy? I am ETERNAL."', 'danger');
+        if (C.revives >= 2) print('(Something far below is keeping him alive. Maybe you should find it before you try this again. You can always flee.)', 'sys');
+        return true;
+      },
+      attack() {
+        if (C.turn % 3 !== 0) return null;
+        let dmg = rand(14, 20);
+        print('Varkhul raises a skeletal hand and a bolt of grave-light tears straight through your armor! (' + dmg + ' damage)', 'dmg');
+        // The Tear of the Mere soaks up half of it.
+        if (S.amulet === 'mere_tear') { dmg = Math.ceil(dmg / 2); print('The Tear of the Mere drinks in half of the grave-light. (You take ' + dmg + '.)', 'magic'); }
+        return dmg;
+      },
+      defeated() { S.flags.lich_dead = true; win(); return true; },
+    },
+    // Queen Elspeth, the Drowned Queen (mere expansion). Every fourth turn she
+    // drags you under (ignores armor, drains mana). Once, when badly hurt, the
+    // drowned dead wrap around her and mend her.
+    queen: {
+      attack() {
+        if (C.hp <= C.max / 2 && !C.mended) {
+          C.mended = true;
+          C.hp = Math.min(C.max, C.hp + 25);
+          print('Pale hands rise out of the black water and wrap around the Drowned Queen, pressing her wounds closed. (She regains 25 health.)', 'danger');
+          return 0;
+        }
+        if (C.turn % 4 !== 0) return null;
+        const dmg = rand(8, 13);
+        const m = Math.min(S.mp, 5);
+        S.mp -= m;
+        print('The Drowned Queen drags you down into the cold. Water fills your eyes and ears and the world goes quiet. (' + dmg + ' damage' + (m ? ', -' + m + ' mana' : '') + ')', 'dmg');
+        return dmg;
+      },
+      defeated() {
+        // Her farewell and the Tear itself come from her "death" text and "drops" in mere.js.
+        S.flags.queen_rest = true;
+        advanceQuest('bell', 5);
+        return false;
+      },
+    },
+  };
 
   // The enemy's turn: poison hurts it, a frozen enemy loses its turn, the
   // lich casts his big spell every third turn, and otherwise it tries to
@@ -505,9 +633,10 @@
       print(C.The + ' is frozen solid and can only glare at you.', 'magic');
     } else {
       let dmg = 0;
-      if (e.special === 'lich' && C.turn % 3 === 0) {
-        dmg = rand(14, 20);
-        print('Varkhul raises a skeletal hand and a bolt of grave-light tears straight through your armor! (' + dmg + ' damage)', 'dmg');
+      const sp = SPECIALS[e.special];
+      const special = sp && sp.attack ? sp.attack() : null;
+      if (special !== null) {
+        dmg = special;
       } else if (!chance(S.cls === 'rogue' ? 0.75 : 0.85)) {
         print(pick([C.The + ' misses you.', 'You sidestep the attack.', C.The + ' lunges and hits nothing but air.']), 'combat');
       } else {
@@ -626,8 +755,9 @@
     });
     showModal('Victory!', [
       'Varkhul, the Hollow King, is truly dead. Hollowmere is free — and you have been awarded three chickens, as promised.',
+      S.flags.queen_rest ? 'Out on the mere, the drowned bell rings once more, all by itself. Queen Elspeth has her answer.' : null,
       S.name + ' the ' + D.CLASSES[S.cls].name + ' — Level ' + S.level + ' · ' + S.kills + ' foes defeated · ' + S.moves + ' moves · about ' + mins + ' minute' + (mins === 1 ? '' : 's') + '.',
-    ], [{ label: 'Play again', action: () => { hideModal(); showStart(); } }]);
+    ].filter(Boolean), [{ label: 'Play again', action: () => { hideModal(); showStart(); } }]);
   }
 
   // ================================================================ PARSER
@@ -640,10 +770,11 @@
     if (!words.length) return null;
     let verb, rest;
     const two = words[0] + ' ' + (words[1] || '');
-    if (MULTI[two]) { verb = MULTI[two]; rest = words.slice(2); }
+    // own() stops words like "constructor" from matching built-in object properties.
+    if (own(MULTI, two)) { verb = MULTI[two]; rest = words.slice(2); }
     else if (words[0] === '?') { verb = 'help'; rest = []; }
-    else if (DIR_ALIASES[words[0]] && words.length === 1) { verb = 'go'; rest = words; }
-    else { verb = VERB_MAP[words[0]] || words[0]; rest = words.slice(1); }
+    else if (own(DIR_ALIASES, words[0]) && words.length === 1) { verb = 'go'; rest = words; }
+    else { verb = own(VERB_MAP, words[0]) ? VERB_MAP[words[0]] : words[0]; rest = words.slice(1); }
     return { verb, rest, raw: words };
   }
   // Removes filler words ("the", "at"...), leaving the important ones.
@@ -678,7 +809,7 @@
   // =============================================================== COMMANDS
   // The only commands allowed during a fight. (No wandering off mid-battle!)
   const COMBAT_OK = new Set(['attack', 'cast', 'drink', 'eat', 'use', 'throw', 'defend', 'flee', 'look', 'examine',
-    'inventory', 'stats', 'spells', 'help', 'equip', 'wait', 'map']);
+    'inventory', 'stats', 'spells', 'help', 'equip', 'wait', 'map', 'journal', 'recipes']);
 
   // run(): the heart of the game. Every typed command and every button click
   // ends up here. It: (1) cuts the input to a safe length, (2) shows it in
@@ -696,8 +827,13 @@
     if (C && !COMBAT_OK.has(p.verb)) {
       print("You're a bit busy being attacked right now. (Try attack, defend, cast, drink, throw or flee.)", 'sys');
     } else {
-      const fn = CMDS[p.verb];
+      const fn = own(CMDS, p.verb) ? CMDS[p.verb] : null;
+      const r = room();
       if (fn) fn(noun, p);
+      // A room can invent its own verbs ("ring bell", "wade") just by having
+      // an on.<verb> hook, without a new command here. own() makes sure we only
+      // ever run the room's own hooks, never built-in object properties.
+      else if (r.on && own(r.on, p.verb) && roomHook(p.verb, noun)) { /* handled by the room */ }
       else print("I don't know how to '" + p.raw[0] + "'. Type 'help' for a list of commands.", 'sys');
     }
     if (S && !C && p.verb !== 'load' && p.verb !== 'restart') autosave();
@@ -722,7 +858,7 @@
     // "go north", "go tavern", "climb stairs"...
     go(noun) {
       const w = noun.filter((x) => x !== 'go');
-      let dir = w.map((x) => DIR_ALIASES[x]).find(Boolean);
+      let dir = w.map((x) => (own(DIR_ALIASES, x) ? DIR_ALIASES[x] : null)).find(Boolean);
       if (!dir && w.some((x) => /stairs?|ladder|tower|staircase/.test(x))) {
         const ex = exitsOf(S.room);
         dir = ex.u ? 'u' : ex.d ? 'd' : null;
@@ -834,7 +970,12 @@
       const it = item(m.id);
       if (it.type === 'potion' || it.type === 'food') consume(noun, 'use');
       else if (it.type === 'throw') CMDS.throw(noun);
-      else if (it.type === 'scroll' || it.type === 'note') CMDS.read(noun);
+      else if (it.type === 'scroll' || it.type === 'note' || it.type === 'recipe') CMDS.read(noun);
+      // Ingredients: the room gets first say ("use leech oil" on a rusty lever);
+      // otherwise it's a nudge towards brewing.
+      else if (it.type === 'ingredient') { if (!roomHook('use', noun, m.id)) print('The ' + it.name + " is a brewing ingredient. Type 'recipes' to see what you can make with it.", 'sys'); }
+      // Anything else: let the room decide ("use leech oil" on a rusty lever).
+      else if (roomHook('use', noun, m.id)) { /* handled by the room */ }
       else if (['weapon', 'armor', 'amulet'].includes(it.type)) CMDS.equip(noun);
       else if (it.type === 'key') { if (!roomHook('unlock', noun, m.id)) print("There's nothing here that the " + it.name + ' fits.', 'sys'); }
       else if (m.id === 'lockpicks') CMDS.picklock(noun);
@@ -851,6 +992,13 @@
       }
       const it = item(m.id);
       if (it.type === 'note') { print(it.text, 'note'); return; }
+      // Recipe pages: show the text, then learn every recipe listed in "teaches".
+      if (it.type === 'recipe') {
+        print(it.text, 'note');
+        const learned = (it.teaches || []).filter((id) => learnRecipe(id));
+        if (!learned.length) print('You already know everything on this page.', 'sys');
+        return;
+      }
       if (it.type !== 'scroll') { print('There is nothing written on the ' + it.name + '.', 'sys'); return; }
       const sp = D.SPELLS[it.spell];
       if (S.spells.includes(it.spell)) { print('You already know ' + sp.name + '. The ' + it.name + ' has nothing new to teach you.', 'sys'); return; }
@@ -1004,10 +1152,15 @@
       if (it.type !== 'throw') { print('You consider throwing the ' + it.name + ', then think better of it.', 'sys'); return; }
       if (!C) { print("Better save it for something that's actually trying to kill you.", 'sys'); return; }
       removeInv(m.id);
-      const dmg = C.e.undead ? it.dmg : 4;
+      // Holy water only really hurts the undead. Other thrown items (like bog
+      // fire) can set their own damage against the living ("dmgLiving") and
+      // their own messages ("hitMsg" / "weakMsg", where {e} = enemy, {d} = damage).
+      const strong = C.e.undead || it.dmgLiving;
+      const dmg = C.e.undead ? it.dmg : (it.dmgLiving || 4);
       C.hp -= dmg;
-      print(C.e.undead ? 'The holy water splashes over ' + C.the + ', which shrieks and smokes! (' + dmg + ' damage)'
-        : 'The holy water splashes over ' + C.the + '. It is not undead — just wet now, and annoyed. (' + dmg + ' damage)', 'magic');
+      const hitMsg = it.hitMsg || 'The holy water splashes over {e}, which shrieks and smokes! ({d} damage)';
+      const weakMsg = it.weakMsg || 'The holy water splashes over {e}. It is not undead — just wet now, and annoyed. ({d} damage)';
+      print(fill(strong ? hitMsg : weakMsg, { e: C.the, d: dmg }), 'magic');
       afterPlayerTurn();
     },
     // "stats": prints your character sheet.
@@ -1030,7 +1183,8 @@
         '  Combat:    attack (a), defend, flee, cast <spell>, spells',
         '  People:    talk to <person>, give <item> to <person>, pay',
         '  Shops:     list, buy <item>, sell <item>',
-        '  Other:     open, unlock, pick lock, push, smash, rest, pray,',
+        '  Brewing:   recipes, brew <recipe>  (some recipes need a cauldron)',
+        '  Other:     journal (j), open, unlock, pick lock, push, smash, rest, pray,',
         '             stats, save, load, restart',
         'Tips: examine everything, talk to everyone twice, and press the up arrow to repeat a command.',
       ].forEach((l) => print(l, 'help'));
@@ -1057,6 +1211,52 @@
     },
     map() {
       print('Your map is in the side panel; it fills in as you explore. You have discovered ' + Object.keys(S.visited).length + ' of ' + Object.keys(D.ROOMS).length + ' places.', 'sys');
+    },
+    // "journal": lists every quest you have started, newest stage first.
+    journal() {
+      const ids = Object.keys(D.QUESTS).filter((id) => questStage(id) > 0);
+      print('JOURNAL', 'room-title');
+      for (const id of ids) {
+        const q = D.QUESTS[id];
+        const st = questStage(id);
+        print((st >= q.done ? '✔ ' : '• ') + q.name + ': ' + (st >= q.done ? q.doneText : q.stages[st]), st >= q.done ? 'desc' : 'quest');
+      }
+    },
+    // "recipes": what you know how to make, and what you're still missing.
+    recipes() {
+      if (!S.recipes.length) { print("You don't know any recipes yet. Somebody who brews things might teach you.", 'sys'); return; }
+      print('You know these recipes' + (room().cauldron ? ' (there is a cauldron here):' : ':'), 'magic');
+      for (const id of S.recipes) {
+        const r = D.RECIPES[id];
+        const parts = Object.entries(r.needs).map(([ing, n]) => {
+          const have = S.inv.filter((x) => x === ing).length;
+          return n + ' ' + item(ing).name + (have >= n ? ' ✔' : ' (have ' + have + ')');
+        });
+        print('  ' + cap(r.name) + ' — ' + parts.join(', ') + (r.cauldron ? '. Needs a cauldron.' : '.'), 'magic');
+      }
+      print("Type 'brew <name>' to make one.", 'sys');
+    },
+    // "craft X" / "brew X": uses up the ingredients and gives you the result.
+    craft(noun) {
+      if (!noun.length) { CMDS.recipes(); return; }
+      const cands = Object.entries(D.RECIPES).map(([id, r]) => ({ id, name: r.name, kw: r.kw }));
+      const known = match(noun, cands.filter((c) => S.recipes.includes(c.id)));
+      if (!known) {
+        print(match(noun, cands) ? "You don't know how to make that yet." : "You don't know a recipe like that. Type 'recipes' to see the ones you know.", 'sys');
+        return;
+      }
+      const r = D.RECIPES[known.id];
+      if (r.cauldron && !room().cauldron) { print('You need a cauldron to brew ' + r.name + '. There is one in Old Nettle\'s hut, and another in the bog.', 'sys'); return; }
+      const missing = Object.entries(r.needs).filter(([ing, n]) => S.inv.filter((x) => x === ing).length < n);
+      if (missing.length) {
+        print('You are missing: ' + missing.map(([ing, n]) => n + ' ' + item(ing).name).join(', ') + '.', 'sys');
+        return;
+      }
+      for (const [ing, n] of Object.entries(r.needs)) for (let k = 0; k < n; k++) removeInv(ing);
+      S.inv.push(r.makes);
+      print(r.cauldron
+        ? 'You drop the ingredients into the cauldron one by one. It bubbles, belches, and turns a colour you have no name for. You ladle out: ' + item(r.makes).name + '.'
+        : 'You grind, mix and stopper everything with great care and a little swearing. You made: ' + item(r.makes).name + '.', 'loot');
     },
     // Joke replies for silly commands like "jump", "dance" or "xyzzy".
     fun(noun, p) {
@@ -1095,6 +1295,8 @@
     if (it.heal) S.hp = Math.min(maxHp(), S.hp + it.heal);
     if (it.mana) S.mp = Math.min(maxMp(), S.mp + it.mana);
     if (it.cure) S.poison = 0;
+    // Some potions leave a lasting effect, remembered as a flag (e.g. breathing underwater).
+    if (it.setFlag) S.flags[it.setFlag] = true;
     if (it.use) print(it.use, 'heal');
     else print('You ' + (it.type === 'food' ? 'eat' : 'drink') + ' the ' + it.name + '. (+' + (S.hp - before.hp) + ' health' + (it.mana ? ', +' + (S.mp - before.mp) + ' mana' : '') + ')', 'heal');
     if (C) enemyTurn();
@@ -1131,7 +1333,7 @@
         S.mp -= sp.mp;
         C.poison = sp.turns;
         C.poisonDmg = sp.tick + Math.floor(S.level / 2);
-        print('You coat your weapon in green venom and strike!', 'magic');
+        print(sp.msg || 'You coat your weapon in green venom and strike!', 'magic');
         playerAttack();
         afterPlayerTurn();
         return;
@@ -1142,7 +1344,7 @@
         const amount = Math.round(sp.amount * (S.cls === 'mage' ? spellPower() : 1));
         const before = S.hp;
         S.hp = Math.min(maxHp(), S.hp + amount);
-        if (id === 'heal') S.poison = 0;
+        if (id === 'heal' || sp.cure) S.poison = 0;
         print('You cast ' + sp.name + '. Warmth floods through you. (+' + (S.hp - before) + ' health)', 'heal');
         if (C) enemyTurn();
         return;
@@ -1235,6 +1437,7 @@
       else if (S.inv.includes('greater_healing')) act.append(button('Drink big potion', 'drink greater healing potion', 'good'));
       if (S.inv.includes('mana_potion')) act.append(button('Drink mana', 'drink mana potion', 'magic'));
       if (S.inv.includes('holy_water') && C.e.undead) act.append(button('Throw holy water', 'throw holy water', 'magic'));
+      if (S.inv.includes('bog_fire')) act.append(button('Throw bog fire', 'throw bog fire', 'danger'));
     } else {
       act.append(button('Look', 'look'));
       const npc = npcHere();
@@ -1242,11 +1445,14 @@
       if (S.enemies[S.room]) act.append(button('Attack', 'attack', 'danger'));
       if (r.shop) act.append(button('Shop', 'list', 'gold'));
       if (isLit() && S.items[S.room].length) act.append(button('Take all', 'take all', 'gold'));
-      if (r.on && r.on.rest) act.append(button('Rest (5g)', 'rest', 'good'));
+      if (S.room === 'tavern') act.append(button('Rest (5g)', 'rest', 'good'));
       if (r.on && r.on.pray) act.append(button('Pray', 'pray', 'good'));
-      if (r.on && r.on.pay && S.enemies[S.room] && !S.flags.troll_paid) act.append(button('Pay toll (15g)', 'pay', 'gold'));
-      if (r.on && r.on.push && !S.flags.throne_moved) act.append(button('Push throne', 'push throne'));
-      if (r.on && r.on.break && !S.flags.phylactery_destroyed && !S.enemies[S.room]) act.append(button('Smash the jar', 'smash jar', 'danger'));
+      if (S.room === 'bridge' && S.enemies[S.room] && !S.flags.troll_paid) act.append(button('Pay toll (15g)', 'pay', 'gold'));
+      if (S.room === 'throne_room' && !S.flags.throne_moved) act.append(button('Push throne', 'push throne'));
+      if (S.room === 'bone_pit' && !S.flags.phylactery_destroyed && !S.enemies[S.room]) act.append(button('Smash the jar', 'smash jar', 'danger'));
+      // Any room can add its own buttons with actions(g), returning a list
+      // like [{ label: 'Ring the bell', cmd: 'ring bell', cls: 'magic' }].
+      if (r.actions) for (const a of r.actions(api) || []) act.append(button(a.label, a.cmd, a.cls));
       act.append(button('Help', 'help'));
     }
 
@@ -1258,7 +1464,7 @@
     if (!S.inv.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Nothing but lint.'; inv.append(li); }
     for (const [id, n] of Object.entries(counts)) {
       const it = item(id);
-      const verb = { potion: 'drink', food: 'eat', scroll: 'read', note: 'read', weapon: 'equip', armor: 'equip', amulet: 'equip', throw: 'throw' }[it.type] || 'examine';
+      const verb = { potion: 'drink', food: 'eat', scroll: 'read', note: 'read', weapon: 'equip', armor: 'equip', amulet: 'equip', throw: 'throw', recipe: 'read' }[it.type] || 'examine';
       const li = document.createElement('li');
       li.append(button(cap(it.name) + (n > 1 ? ' ×' + n : ''), verb + ' ' + it.name, 'item ' + it.type, verb + ': ' + it.desc));
       inv.append(li);
@@ -1275,6 +1481,19 @@
       b.disabled = S.mp < sp.mp;
       li.append(b);
       sl.append(li);
+    }
+
+    // Quests: one line per unfinished quest. Clicking it prints the full journal.
+    const ql = $('quest-list');
+    if (ql) {
+      ql.replaceChildren();
+      const open = Object.keys(D.QUESTS).filter((id) => { const st = questStage(id); return st > 0 && st < D.QUESTS[id].done; });
+      if (!open.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No open quests.'; ql.append(li); }
+      for (const id of open) {
+        const li = document.createElement('li');
+        li.append(button(D.QUESTS[id].name, 'journal', 'quest', D.QUESTS[id].stages[questStage(id)]));
+        ql.append(li);
+      }
     }
 
     drawMap();

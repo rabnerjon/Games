@@ -202,6 +202,12 @@
           <h2>Spells</h2>
           <ul id="spell-list" class="list"></ul>
         </div>
+
+        <!-- Expansion: open quests. Clicking one shows the full journal. -->
+        <div class="panel">
+          <h2>Quests</h2>
+          <ul id="quest-list" class="list"></ul>
+        </div>
       </aside>
     </main>
   </div>
@@ -231,6 +237,9 @@
   -->
   <script src="data.js"></script>
   <script src="rooms.js"></script>
+  <!-- Expansion: quests and recipes, then the Drowned Mere region. Both add to GameData, so they must load before game.js. -->
+  <script src="systems.js"></script>
+  <script src="mere.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

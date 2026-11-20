@@ -326,6 +326,12 @@ input {
 .list button.weapon, .list button.armor, .list button.amulet { color: #f5d88a; }
 .list button.scroll, .list button.spell, .list button.throw { color: #dcc6ff; }
 .list button.key { color: #9fd3e6; }
+/* Expansion: brewing ingredients and recipe pages are herb-green, keepsakes pale blue, quests amber. */
+.list button.ingredient, .list button.recipe { color: #a8d8a0; }
+.list button.keepsake { color: #b8d4e8; }
+.list button.quest { color: #f0c987; }
+/* A "Journal updated" line in the story log. */
+.quest { color: #f0c987; font-style: italic; }
 
 /* ---------- modal ---------- */
 /*
